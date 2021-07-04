@@ -1,13 +1,11 @@
-mod config;
-mod pam;
+mod logic;
 mod yubi;
 mod zfs_mount;
 
 use clap::{crate_authors, crate_version, App, Arg};
 use std::{env, process::exit};
 
-use crate::config::{config_mode_file, config_mode_yubi, unlock_zfs_file, unlock_zfs_yubi};
-use crate::pam::{pam_mode_file, pam_mode_yubi};
+use crate::logic::{print_mode_file, print_mode_yubi, unlock_zfs_file, unlock_zfs_yubi};
 
 fn main() {
     let app = App::new("shavee")
@@ -57,17 +55,19 @@ fn main() {
             eprintln!("ERROR: Specify base home dir with -z eg. \"zroot/data/home/\"");
             exit(1)
         };
+
+        let mut dir = arg.value_of("dir").expect("Invalid dir").to_string();
+        if !dir.ends_with('/') {
+            dir.push('/');
+        };
+
+        let user = env::var("PAM_USER").expect("Var not found");
+        dir.push_str(user.as_str());
+
         if arg.is_present("pfile") {
-            pam_mode_file(
-                &pass,
-                &arg.value_of("dir").expect("Invalid base dir.").to_string(),
-                &arg.value_of("pfile").expect("Invalid File.").to_string(),
-            )
+            unlock_zfs_file(pass, arg.value_of("pfile").expect("Invalide File").to_string(), dir)
         } else if arg.is_present("yubikey") {
-            pam_mode_yubi(
-                &pass,
-                &arg.value_of("dir").expect("Invalid base dir.").to_string(),
-            );
+            unlock_zfs_yubi(pass, dir)
         } else {
             eprintln!("ERROR: Select a 2FA mode with either -y (Yubikey) or -f (File)");
             exit(1);
@@ -86,12 +86,12 @@ fn main() {
                 )
             }
         } else if arg.is_present("pfile") {
-            config_mode_file(
+            print_mode_file(
                 &pass,
                 &arg.value_of("pfile").expect("Invalid File.").to_string(),
             );
         } else if arg.is_present("yubikey") {
-            config_mode_yubi(&pass);
+            print_mode_yubi(&pass);
         } else {
             eprintln!("Select a 2FA mode with either -y (Yubikey) or -f (File)");
             exit(1)

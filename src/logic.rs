@@ -2,13 +2,13 @@ use crate::{yubi, zfs_mount::zfs_mount};
 use sha2::{Digest, Sha512};
 use std::{io::Read, process::exit};
 
-pub fn config_mode_yubi(pass: &String) {
+pub fn print_mode_yubi(pass: &String) {
     let key = yubi::get_hash(&pass).expect("Failed to calculate hash from Yubikey"); // Get encryption key
     println!("{}", &key);
     exit(0);
 }
 
-pub fn config_mode_file(pass: &String, file: &String) {
+pub fn print_mode_file(pass: &String, file: &String) {
     let passhash = Sha512::digest(&pass.as_bytes());
 
     let mut f = std::fs::File::open(&file).expect("Failed opening file");
