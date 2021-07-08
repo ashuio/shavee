@@ -2,7 +2,9 @@ mod logic;
 mod yubi;
 mod zfs_mount;
 
+use crate::zfs_mount::zfs_mount;
 use clap::{crate_authors, crate_version, App, Arg};
+use sha2::{Digest, Sha512};
 use std::{env, process::exit};
 
 use crate::logic::{print_mode_file, print_mode_yubi, unlock_zfs_file, unlock_zfs_yubi};
@@ -21,7 +23,7 @@ fn main() {
                 .takes_value(false),
         )
         .arg(
-            Arg::with_name("pfile")
+            Arg::with_name("keyfile")
                 .short("f")
                 .long("file")
                 .help("<Keyfile location>")
@@ -64,37 +66,50 @@ fn main() {
         let user = env::var("PAM_USER").expect("Var not found");
         dir.push_str(user.as_str());
 
-        if arg.is_present("pfile") {
-            unlock_zfs_file(pass, arg.value_of("pfile").expect("Invalide File").to_string(), dir)
+        if arg.is_present("keyfile") {
+            unlock_zfs_file(
+                pass,
+                arg.value_of("keyfile").expect("Invalide File").to_string(),
+                dir,
+            )
         } else if arg.is_present("yubikey") {
             unlock_zfs_yubi(pass, dir)
         } else {
-            eprintln!("ERROR: Select a 2FA mode with either -y (Yubikey) or -f (File)");
-            exit(1);
+            let key = Sha512::digest(pass.as_bytes());
+            zfs_mount(
+                &format!("{:x}", key),
+                arg.value_of("dir").expect("Invalid Dataset").to_string(),
+            );
         }
     } else {
         if arg.is_present("dir") {
             if arg.is_present("yubikey") {
                 unlock_zfs_yubi(pass, arg.value_of("dir").unwrap().to_string())
-            } else if arg.is_present("pfile") {
+            } else if arg.is_present("keyfile") {
                 unlock_zfs_file(
                     pass,
-                    arg.value_of("pfile").expect("Invalid File.").to_string(),
+                    arg.value_of("keyfile").expect("Invalid File.").to_string(),
                     arg.value_of("dir")
                         .expect("Invalid Dataset input.")
                         .to_string(),
                 )
+            } else {
+                let key = Sha512::digest(pass.as_bytes());
+                zfs_mount(
+                    &format!("{:x}", key),
+                    arg.value_of("dir").expect("Invalid Dataset").to_string(),
+                );
             }
-        } else if arg.is_present("pfile") {
+        } else if arg.is_present("keyfile") {
             print_mode_file(
                 &pass,
-                &arg.value_of("pfile").expect("Invalid File.").to_string(),
+                &arg.value_of("keyfile").expect("Invalid File.").to_string(),
             );
         } else if arg.is_present("yubikey") {
             print_mode_yubi(&pass);
         } else {
-            eprintln!("Select a 2FA mode with either -y (Yubikey) or -f (File)");
-            exit(1)
+            let key = Sha512::digest(pass.as_bytes());
+            println!("{:x}", key);
         }
     }
 }

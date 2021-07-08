@@ -30,6 +30,9 @@ You can use any preexisting file.
 
 **Note: Since the file becomes part of your encryption key and its Security cannot be guaranteed as with Yubikey you are responsible for keeping it secure.**
 
+### 3. Password only
+
+If no second factor is specified the program will use only password as a single factor.
 
 ## Build and Install
 1. Install [Rust](https://www.rust-lang.org/tools/install)
