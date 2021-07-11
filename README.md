@@ -18,15 +18,27 @@ Yubikey mode is set with the `-y` flag.
 
 **NOTE** It currently only reads the SLOT 2 of the Yubikey for HMAC.
 
-### 2. File/USB
+### 2. File/HTTP(S)
 
 In this mode the program looks for a file (can be any file) and use that along with your password to derive the final encryption.
 
 File mode is set using the `-f <path to file>` option.
 
-The idea with this method is to keep the file on a USB storage device and present it during the login to derive the encryption key.
+File can be both a local file or a http(s) location 
 
-You can use any preexisting file.
+Example
+```bash
+shavee -f https://foo.org/secret.png
+```
+OR
+
+```bash
+shavee -f /mnt/usb/secret.png
+```
+
+The idea with this method is to keep the file on a USB storage device or a Netork location you control and have it present during the login to derive the final encryption key.
+
+You can use any pre existing file of your choice.
 
 **Note: Since the file becomes part of your encryption key and its Security cannot be guaranteed as with Yubikey you are responsible for keeping it secure.**
 
@@ -58,7 +70,7 @@ Modes
 Flags/Options
 
 * `-y` : Use Yubikey for 2FA
-* `-f` : Use any file as 2FA, takes filepath as argument.
+* `-f` : Use any file as 2FA, takes filepath or a HTTP(S) location as an argument.
 * `-p` : Enable PAM mode
 * `-c` : Create ZFS dataset with the derived encryption key
 * `-z` : if present in conjunction with any of the above options, it will try to unlock and mount the given dataset with the derived key instead of printing it. Takes zfs dataset path as argument. ( Will automatically append username in PAM mode )

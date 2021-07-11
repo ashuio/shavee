@@ -1,6 +1,6 @@
 [package]
 name = "shavee"
-version = "0.1.27"
+version = "0.1.28"
 authors = ["Ashutosh Verma <shavee@ashu.io>"]
 edition = "2018"
 license = "MIT"
@@ -22,3 +22,4 @@ sha2 = "0.9.5"
 yubico_manager = "0.8.1"
 clap = "2.33.3"
 rpassword = "5.0.1"
+reqwest = {version = "0.11.4", features = ["blocking"]}
