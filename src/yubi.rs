@@ -16,8 +16,9 @@ pub fn get_hash(pass: &String) -> Result<String, io::Error> {
             .set_slot(Slot::Slot2);
 
         // Challenge can not be greater than 64 bytes
-        let hmac_result = yubi.challenge_response_hmac(&challenge, config).unwrap(); // Perform HMAC challenge
-
+        let hmac_result = yubi
+            .challenge_response_hmac(&challenge, config)
+            .expect("Failed to run HMAC Challenge on SLOT 2 of Yubikey"); // Perform HMAC challenge
         format!("{:x}", &Sha512::digest(&hmac_result.deref())) // Prepare and return encryption key as hex string
     } else {
         let e = io::Error::new(io::ErrorKind::NotFound, "Yubikey not found");

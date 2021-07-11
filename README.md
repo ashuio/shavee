@@ -14,7 +14,7 @@ This program currently supports two methods for 2FA:
 
 In this mode the program looks for a Yubikey on login and uses it's HMAC mode on SLOT 2 along with your password to derive the final encryption key.
 
-Yubikey mode is set with the `-f` flag.
+Yubikey mode is set with the `-y` flag.
 
 **NOTE** It currently only reads the SLOT 2 of the Yubikey for HMAC.
 
@@ -50,31 +50,24 @@ cargo build --release
 sudo cp target/release/shavee /usr/bin
 ```
 
-## Usage
-
-This command takes paramenters in the following form
-
-shavee \<MODE> <FLAGS/OPTIONS>
-
 Modes
 
-* pam : For use with the pam_exec.so module (Used with the `-p` flag)
+* pam    : For use with the pam_exec.so module (Used with the `-p` flag)
+* create : Creates new Datasets with the derived key (Used with the `-c` option) 
 
 Flags/Options
 
 * `-y` : Use Yubikey for 2FA
 * `-f` : Use any file as 2FA, takes filepath as argument.
 * `-p` : Enable PAM mode
+* `-c` : Create ZFS dataset with the derived encryption key
 * `-z` : if present in conjunction with any of the above options, it will try to unlock and mount the given dataset with the derived key instead of printing it. Takes zfs dataset path as argument. ( Will automatically append username in PAM mode )
 
 **NOTE: The `-y` (Yubikey mode) flag and the `-f <path to file>` (File mode) option are interchangeable.**
 
-
-## Test
-
-Test this program once with the `shavee -y ` before attempting to use it.
-
 ## Configure ZFS Datasets
+
+**NOTE: If using with PAM your dataset password should be the SAME as your user account password for it to work automatically**
 
 **NOTE: Remember to update your encryption key as well if you update your password.**
 
@@ -83,30 +76,34 @@ Test this program once with the `shavee -y ` before attempting to use it.
 **You can change/update the key for existing ZFS datasets by running**
 
 ```bash
-shavee -y | zfs change-key <zfs dataset path>
+shavee -c <zfs dataset path>
 ```
 
 **Example**
 
 ```bash
-shavee -y | zfs change-key zroot/data/home/hunter
+shavee -y -c zroot/data/home/hunter
 ```
+
+Here we use Yubikey as our second factor. (Can be omitted for password only auth)
+
+**Note: Encryption must already be enabled and the key loaded to change key of an exisiting dataset.**
 
 **Create a new dataset**
 
-To create a dataset with our key we will first creat the dataset normally like
+To create a new dataset with our derived encryption key simply run
 
 ```bash
-zfs create -o encryption-on -o keylocation=prompt -o keyformat=passphrase <Desired dataset>
+sudo shavee -c <Desired dataset>
 ```
 
 Example
 
 ```bash
-zfs create -o encryption-on -o keylocation=prompt -o keyformat=passphrase zroot/data/home/hunter
+sudo shavee -f /mnt/usb/secretfile -c zroot/data/home/hunter
 ```
+Here we use a FILE for our second factor (Can be omitted for password auth only)
 
-**And then change the key to that dataset using the first method.**
 
 ## Use shavee to unlock and mount any zfs patition
 
@@ -119,7 +116,7 @@ shavee -y -z zroot/data/home/hunter/secrets
 ```
 ## Use in Scripts
 
-**You can also pipe the password directly to use with scripts**
+**You can also pipe the password directly into shavee to use with scripts**
 
 **Example**
 
@@ -128,7 +125,7 @@ echo "hunter2" | shavee -y -z zroot/data/home/hunter/secrets
 ```
 
 Here "hunter2" will be treated as the password
-## Use USB Drive instead of a Yubikey
+## Use a USB Drive instead of a Yubikey
 
 You can use the `-f` option instead of the `-y` flag to substitute a Yubikey with any USB Drive.
 

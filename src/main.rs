@@ -1,8 +1,11 @@
 mod logic;
 mod yubi;
-mod zfs_mount;
+mod zfs;
 
-use crate::zfs_mount::zfs_mount;
+use crate::{
+    logic::{create_zfs_file, create_zfs_yubi},
+    zfs::{zfs_create, zfs_mount},
+};
 use clap::{crate_authors, crate_version, App, Arg};
 use sha2::{Digest, Sha512};
 use std::{env, process::exit};
@@ -38,6 +41,16 @@ fn main() {
                 .takes_value(false)
                 .required(false)
                 .help("PAM mode"),
+        )
+        .arg(
+            Arg::with_name("create")
+                .short("c")
+                .long("create")
+                .takes_value(true)
+                .value_name("create")
+                .required(false)
+                .conflicts_with("dir")
+                .help("Create a new zfs Dataset with the derived key"),
         )
         .arg(
             Arg::with_name("dir")
@@ -80,6 +93,33 @@ fn main() {
                 &format!("{:x}", key),
                 arg.value_of("dir").expect("Invalid Dataset").to_string(),
             );
+        }
+    } else if arg.is_present("create") {
+        let dataset = arg
+            .value_of("create")
+            .expect("Invalid ZFS Dataset")
+            .to_string();
+
+        if arg.is_present("yubikey") {
+            create_zfs_yubi(pass, dataset)
+        } else if arg.is_present("keyfile") {
+            create_zfs_file(
+                pass,
+                arg.value_of("keyfile")
+                    .expect("Invalid Keyfile")
+                    .to_string(),
+                dataset,
+            )
+        } else {
+            let key = Sha512::digest(pass.as_bytes());
+            let mut dataset = arg
+                .value_of("create")
+                .expect("Invalid ZFS Dataset")
+                .to_string();
+            if dataset.ends_with("/") {
+                dataset.pop();
+            }
+            zfs_create(&format!("{:x}", key), dataset);
         }
     } else {
         if arg.is_present("dir") {
