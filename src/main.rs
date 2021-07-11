@@ -1,9 +1,10 @@
+mod filehash;
 mod logic;
 mod yubi;
 mod zfs;
 
 use crate::{
-    logic::{create_zfs_file, create_zfs_yubi},
+    logic::{create_zfs_file, create_zfs_yubi, port_check},
     zfs::{zfs_create, zfs_mount},
 };
 use clap::{crate_authors, crate_version, App, Arg};
@@ -53,6 +54,16 @@ fn main() {
                 .help("Create a new zfs Dataset with the derived key"),
         )
         .arg(
+            Arg::with_name("port")
+                .short("P")
+                .long("port")
+                .takes_value(true)
+                .value_name("port")
+                .required(false)
+                .help("Network Port")
+                .validator(port_check),
+        )
+        .arg(
             Arg::with_name("dir")
                 .short("z")
                 .long("dir")
@@ -62,7 +73,17 @@ fn main() {
                 .help("Base Directory eg. \"zroot/data/home/\""),
         );
     let arg = app.get_matches();
-    let mut pass = rpassword::prompt_password_stderr("Password: ").expect("Failed to get Password");
+    let port: u32 = if arg.is_present("port") {
+        arg.value_of("port")
+            .expect("Invalid Port")
+            .parse::<u32>()
+            .expect("Invalid port")
+    } else {
+        let p: u32 = 99999;
+        p
+    };
+
+    let mut pass = rpassword::prompt_password_stderr("Dataset Password: ").expect("Failed to get Password");
     pass.push_str("shavee"); // Salt password
 
     if arg.is_present("pam") {
@@ -84,6 +105,7 @@ fn main() {
                 pass,
                 arg.value_of("keyfile").expect("Invalide File").to_string(),
                 dir,
+                port,
             )
         } else if arg.is_present("yubikey") {
             unlock_zfs_yubi(pass, dir)
@@ -109,6 +131,7 @@ fn main() {
                     .expect("Invalid Keyfile")
                     .to_string(),
                 dataset,
+                port,
             )
         } else {
             let key = Sha512::digest(pass.as_bytes());
@@ -132,6 +155,7 @@ fn main() {
                     arg.value_of("dir")
                         .expect("Invalid Dataset input.")
                         .to_string(),
+                    port,
                 )
             } else {
                 let key = Sha512::digest(pass.as_bytes());
@@ -144,6 +168,7 @@ fn main() {
             print_mode_file(
                 &pass,
                 &arg.value_of("keyfile").expect("Invalid File.").to_string(),
+                port,
             );
         } else if arg.is_present("yubikey") {
             print_mode_yubi(&pass);

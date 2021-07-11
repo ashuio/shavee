@@ -18,7 +18,7 @@ Yubikey mode is set with the `-y` flag.
 
 **NOTE** It currently only reads the SLOT 2 of the Yubikey for HMAC.
 
-### 2. File/HTTP(S)
+### 2. File/HTTP(S)/SFTP
 
 In this mode the program looks for a file (can be any file) and use that along with your password to derive the final encryption.
 
@@ -26,12 +26,18 @@ File mode is set using the `-f <path to file>` option.
 
 File can be both a local file or a http(s) location 
 
-Example
+Example HTTPS
 ```bash
 shavee -f https://foo.org/secret.png
 ```
-OR
+Exmaple SFTP
+```bash
+shavee -f sftp://user@foo.org/mnt/secretfile -P 4242
+```
 
+`-P` Option Sets port for both HTTP and SFTP.
+
+Exmaple Local File
 ```bash
 shavee -f /mnt/usb/secret.png
 ```
@@ -71,7 +77,8 @@ Flags/Options
 
 * `-y` : Use Yubikey for 2FA
 * `-f` : Use any file as 2FA, takes filepath or a HTTP(S) location as an argument.
-* `-p` : Enable PAM mode
+* `-p` : Enable PAM mode (Lower case p )
+* `-P` : Set port for HTTP and SFTP requests (Upper case P )
 * `-c` : Create ZFS dataset with the derived encryption key
 * `-z` : if present in conjunction with any of the above options, it will try to unlock and mount the given dataset with the derived key instead of printing it. Takes zfs dataset path as argument. ( Will automatically append username in PAM mode )
 
