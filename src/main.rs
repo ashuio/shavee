@@ -27,6 +27,14 @@ fn main() {
                 .takes_value(false),
         )
         .arg(
+            Arg::with_name("slot")
+                .short("s")
+                .long("slot")
+                .help("Yubikey HMAC Slot")
+                .takes_value(true)
+                .required(false),
+        )
+        .arg(
             Arg::with_name("keyfile")
                 .short("f")
                 .long("file")
@@ -73,17 +81,28 @@ fn main() {
                 .help("Base Directory eg. \"zroot/data/home/\""),
         );
     let arg = app.get_matches();
-    let port: u32 = if arg.is_present("port") {
+    let port: u16 = if arg.is_present("port") {
         arg.value_of("port")
             .expect("Invalid Port")
-            .parse::<u32>()
+            .parse::<u16>()
             .expect("Invalid port")
     } else {
-        let p: u32 = 99999;
+        let p: u16 = 0;
         p
     };
-
-    let mut pass = rpassword::prompt_password_stderr("Dataset Password: ").expect("Failed to get Password");
+    let s: u8 = 2; // Default Yubikey Slot
+    let slot: u8 = if arg.is_present("slot") {
+        if arg.value_of("slot").expect("Invalid slot value").eq("1") {
+            let s = 1;
+            s
+        } else {
+            s
+        }
+    } else {
+        s
+    };
+    let mut pass =
+        rpassword::prompt_password_stderr("Dataset Password: ").expect("Failed to get Password");
     pass.push_str("shavee"); // Salt password
 
     if arg.is_present("pam") {
@@ -108,7 +127,7 @@ fn main() {
                 port,
             )
         } else if arg.is_present("yubikey") {
-            unlock_zfs_yubi(pass, dir)
+            unlock_zfs_yubi(pass, dir, slot)
         } else {
             let key = Sha512::digest(pass.as_bytes());
             zfs_mount(
@@ -123,7 +142,7 @@ fn main() {
             .to_string();
 
         if arg.is_present("yubikey") {
-            create_zfs_yubi(pass, dataset)
+            create_zfs_yubi(pass, dataset, slot)
         } else if arg.is_present("keyfile") {
             create_zfs_file(
                 pass,
@@ -147,7 +166,7 @@ fn main() {
     } else {
         if arg.is_present("dir") {
             if arg.is_present("yubikey") {
-                unlock_zfs_yubi(pass, arg.value_of("dir").unwrap().to_string())
+                unlock_zfs_yubi(pass, arg.value_of("dir").unwrap().to_string(), slot)
             } else if arg.is_present("keyfile") {
                 unlock_zfs_file(
                     pass,
@@ -171,7 +190,7 @@ fn main() {
                 port,
             );
         } else if arg.is_present("yubikey") {
-            print_mode_yubi(&pass);
+            print_mode_yubi(&pass, slot);
         } else {
             let key = Sha512::digest(pass.as_bytes());
             println!("{:x}", key);

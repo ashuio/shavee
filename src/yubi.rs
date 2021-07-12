@@ -3,17 +3,25 @@ use std::{io, ops::Deref};
 use yubico_manager::config::{Config, Mode, Slot};
 use yubico_manager::Yubico;
 
-pub fn get_hash(pass: &String) -> Result<String, io::Error> {
+pub fn get_hash(pass: &String, slot: u8) -> Result<String, io::Error> {
     let mut yubi = Yubico::new();
     // Search for Yubikey
     Ok(if let Ok(device) = yubi.find_yubikey() {
         let challenge = Sha512::digest(&pass.as_bytes()); // Prepare Challenge
+        let slot = if slot == 1 {
+            Slot::Slot1
+        } else if slot == 2 {
+            Slot::Slot2
+        } else {
+            eprintln!("Invalid Slot");
+            std::process::exit(1)
+        };
         let config = Config::default() // Configure Yubikey
             .set_vendor_id(device.vendor_id)
             .set_product_id(device.product_id)
             .set_variable_size(false)
             .set_mode(Mode::Sha1)
-            .set_slot(Slot::Slot2);
+            .set_slot(slot);
 
         // Challenge can not be greater than 64 bytes
         let hmac_result = yubi

@@ -7,13 +7,13 @@ use crate::{
 use sha2::{Digest, Sha512};
 use std::process::exit;
 
-pub fn print_mode_yubi(pass: &String) {
-    let key = yubi::get_hash(&pass).expect("Failed to calculate hash from Yubikey"); // Get encryption key
+pub fn print_mode_yubi(pass: &String,slot:u8) {
+    let key = yubi::get_hash(&pass,slot).expect("Failed to calculate hash from Yubikey"); // Get encryption key
     println!("{}", &key);
     exit(0);
 }
 
-pub fn print_mode_file(pass: &String, file: &String, port: u32) {
+pub fn print_mode_file(pass: &String, file: &String, port: u16) {
     let passhash = Sha512::digest(&pass.as_bytes()).to_vec();
 
     let filehash = get_filehash(&file, port);
@@ -23,8 +23,8 @@ pub fn print_mode_file(pass: &String, file: &String, port: u32) {
     exit(0);
 }
 
-pub fn unlock_zfs_yubi(pass: String, zfspath: String) {
-    let key = yubi::get_hash(&pass); // Get encryption key
+pub fn unlock_zfs_yubi(pass: String, zfspath: String,slot:u8) {
+    let key = yubi::get_hash(&pass,slot); // Get encryption key
     let mut zfspath = zfspath;
     match key {
         Ok(key) => {
@@ -39,7 +39,7 @@ pub fn unlock_zfs_yubi(pass: String, zfspath: String) {
     }
 }
 
-pub fn unlock_zfs_file(pass: String, file: String, dataset: String, port: u32) {
+pub fn unlock_zfs_file(pass: String, file: String, dataset: String, port: u16) {
     let mut dataset = dataset;
     if dataset.ends_with("/") {
         dataset.pop();
@@ -52,7 +52,7 @@ pub fn unlock_zfs_file(pass: String, file: String, dataset: String, port: u32) {
     zfs_mount(&key, dataset)
 }
 
-pub fn create_zfs_file(pass: String, file: String, dataset: String, port: u32) {
+pub fn create_zfs_file(pass: String, file: String, dataset: String, port: u16) {
     let mut dataset = dataset;
     if dataset.ends_with("/") {
         dataset.pop();
@@ -66,8 +66,8 @@ pub fn create_zfs_file(pass: String, file: String, dataset: String, port: u32) {
     zfs_create(&key, dataset)
 }
 
-pub fn create_zfs_yubi(pass: String, zfspath: String) {
-    let key = yubi::get_hash(&pass); // Get encryption key
+pub fn create_zfs_yubi(pass: String, zfspath: String,slot:u8) {
+    let key = yubi::get_hash(&pass,slot); // Get encryption key
     let mut zfspath = zfspath;
     match key {
         Ok(key) => {

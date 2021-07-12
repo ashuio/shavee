@@ -16,7 +16,7 @@ In this mode the program looks for a Yubikey on login and uses it's HMAC mode on
 
 Yubikey mode is set with the `-y` flag.
 
-**NOTE** It currently only reads the SLOT 2 of the Yubikey for HMAC.
+Yubikey HMAC Slot can be set with the `-s` flag, defaults to SLOT 2
 
 ### 2. File/HTTP(S)/SFTP
 
@@ -79,6 +79,7 @@ Flags/Options
 * `-f` : Use any file as 2FA, takes filepath or a HTTP(S) location as an argument.
 * `-p` : Enable PAM mode (Lower case p )
 * `-P` : Set port for HTTP and SFTP requests (Upper case P )
+* `-s` : Set Yubikey HMAC Slot (Can be either 1 or 2)
 * `-c` : Create ZFS dataset with the derived encryption key
 * `-z` : if present in conjunction with any of the above options, it will try to unlock and mount the given dataset with the derived key instead of printing it. Takes zfs dataset path as argument. ( Will automatically append username in PAM mode )
 
