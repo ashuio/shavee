@@ -67,6 +67,7 @@ impl Sargs {
                     .takes_value(true)
                     .value_name("port")
                     .required(false)
+                    .validator(port_check)
                     .help("Network Port"),
             )
             .arg(
@@ -122,20 +123,24 @@ impl Sargs {
         let umode = if arg.is_present("yubikey") {
             String::from("yubikey")
         } else if arg.is_present("keyfile") {
-            file = arg.value_of("keyfile").expect("Invalid keyfile").to_string();
+            file = arg
+                .value_of("keyfile")
+                .expect("Invalid keyfile")
+                .to_string();
             String::from("file")
         } else {
             String::from("password")
         };
 
-        if dataset.ends_with("/") {dataset.pop();};
+        if dataset.ends_with("/") {
+            dataset.pop();
+        };
 
         if arg.is_present("pam") {
             let user = env::var("PAM_USER").expect("PAM_USER Var not found");
             dataset.push('/');
             dataset.push_str(user.as_str());
         };
-
 
         Sargs {
             mode,
@@ -145,5 +150,13 @@ impl Sargs {
             umode,
             dataset,
         }
+    }
+}
+
+fn port_check(v: String) -> Result<(), String> {
+    if v.parse::<u16>().is_ok() {
+        return Ok(());
+    } else {
+        return Err(String::from("Inavlid port number"));
     }
 }
