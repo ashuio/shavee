@@ -82,10 +82,3 @@ pub fn create_zfs_yubi(pass: String, zfspath: String,slot:u8) {
     }
 }
 
-pub fn port_check(v: String) -> Result<(), String> {
-    let v: u16 = v.parse::<u16>().expect("Invalid Port number");
-    if v > 0 {
-        return Ok(());
-    }
-    Err(String::from("Inavlid Port number"))
-}
