@@ -137,14 +137,19 @@ impl Sargs {
         };
 
         if arg.is_present("pam") {
-            dataset = arg.value_of("zset").expect("Invalid ZFS dataset").to_string();
-            if dataset.ends_with("/"){dataset.pop();};
+            dataset = arg
+                .value_of("zset")
+                .expect("Invalid ZFS dataset")
+                .to_string();
+            if dataset.ends_with("/") {
+                dataset.pop();
+            };
             let user = env::var("PAM_USER");
             let user = match user {
                 Ok(u) => u,
                 Err(error) => {
                     eprintln!("Error: PAM_USER Environment variable not found");
-                    eprintln!("Error: {}",error);
+                    eprintln!("Error: {}", error);
                     exit(1)
                 }
             };

@@ -12,9 +12,18 @@ This program currently supports two methods for 2FA:
 
 ### 1. Yubikey
 
-In this mode the program looks for a Yubikey on login and uses it's HMAC mode on SLOT 2 along with your password to derive the final encryption key.
+[Yubikeys](https://www.yubico.com/products/) are secure authetication USB devices we can use for our Strong second factor.
+
+Yubikey comes pre-programmed with a HMAC key on Slot 2 which can be used to derive our final encryption key along with our password.
+
+Programmed HMAC secret in the Yubikey CANNOT be extracted once programmed in.
+
+If you want to use Multiple keys on the same dataset (eg. backup keys) it is required for you to program SAME fresh HMAC secrets on all those keys.
 
 Yubikey mode is set with the `-y` flag.
+
+In this mode the program looks for a Yubikey on login and uses it's HMAC mode along with your password to derive the final encryption key.
+
 
 Yubikey HMAC Slot can be set with the `-s` flag, defaults to SLOT 2
 
@@ -84,6 +93,8 @@ Flags/Options
 * `-z` : if present in conjunction with any of the above options, it will try to unlock and mount the given dataset with the derived key instead of printing it. Takes zfs dataset path as argument. ( Will automatically append username in PAM mode )
 
 **NOTE: The `-y` (Yubikey mode) flag and the `-f <path to file>` (File mode) option are interchangeable.**
+
+It is recommended to run the command to change keys again of your Datasets after version updates.
 
 ## Configure ZFS Datasets
 
