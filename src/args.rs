@@ -137,7 +137,17 @@ impl Sargs {
         };
 
         if arg.is_present("pam") {
-            let user = env::var("PAM_USER").expect("PAM_USER Var not found");
+            dataset = arg.value_of("zset").expect("Invalid ZFS dataset").to_string();
+            if dataset.ends_with("/"){dataset.pop();};
+            let user = env::var("PAM_USER");
+            let user = match user {
+                Ok(u) => u,
+                Err(error) => {
+                    eprintln!("Error: PAM_USER Environment variable not found");
+                    eprintln!("Error: {}",error);
+                    exit(1)
+                }
+            };
             dataset.push('/');
             dataset.push_str(user.as_str());
         };
@@ -157,6 +167,6 @@ fn port_check(v: String) -> Result<(), String> {
     if v.parse::<u16>().is_ok() {
         return Ok(());
     } else {
-        return Err(String::from("Inavlid port number"));
+        return Err(String::from("Error: Inavlid port number"));
     }
 }

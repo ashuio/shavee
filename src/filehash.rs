@@ -1,12 +1,20 @@
 use curl;
 use sha2::{Digest, Sha512};
-use std::io::Read;
+use std::{io::Read, process::exit};
 
 pub fn get_filehash(file: &String, port: u16) -> Vec<u8> {
     let filehash = if file.starts_with("https://") || file.starts_with("http://") || file.starts_with("sftp://") {
         get_filehash_http_sftp(&file, port)
     } else {
-        let mut f = std::fs::File::open(&file).expect("Failed opening file");
+        let f = std::fs::File::open(&file);
+        let mut f = match f {
+            Ok(f) => f,
+            Err(error) => {
+                eprintln!("Error: Failed to open file {}",file);
+                eprintln!("Error: {}",error);
+                exit(1)
+            }
+        };
         let mut filehash: Vec<u8> = Vec::new();
         f.read_to_end(&mut filehash).expect("Failed reading file.");
         Sha512::digest(&filehash).to_vec()

@@ -1,15 +1,23 @@
 use crate::{
     filehash::get_filehash,
-    yubi,
+    yubikey,
     zfs::{zfs_create, zfs_mount},
 };
 
 use sha2::{Digest, Sha512};
 use std::process::exit;
 
-pub fn print_mode_yubi(pass: &String,slot:u8) {
-    let key = yubi::get_hash(&pass,slot).expect("Failed to calculate hash from Yubikey"); // Get encryption key
+pub fn print_mode_yubi(pass: &String, slot: u8) {
+    let key = yubikey::get_hash(&pass, slot); // Get encryption key
+    let key = match key {
+        Ok(key) => key,
+        Err(error) => {
+            eprintln!("Error: Failed to calculate hash from Yubikey\n{}", error);
+            exit(1)
+        }
+    };
     println!("{}", &key);
+    drop(key);
     exit(0);
 }
 
@@ -20,22 +28,22 @@ pub fn print_mode_file(pass: &String, file: &String, port: u16) {
     let key = [filehash, passhash].concat();
     let key = Sha512::digest(&key);
     println!("{:x}", &key);
+    drop(key);
     exit(0);
 }
 
-pub fn unlock_zfs_yubi(pass: String, zfspath: String,slot:u8) {
-    let key = yubi::get_hash(&pass,slot); // Get encryption key
-    let mut zfspath = zfspath;
+pub fn unlock_zfs_yubi(pass: String, zfspath: String, slot: u8) {
+    let key = yubikey::get_hash(&pass, slot); // Get encryption key
     match key {
         Ok(key) => {
-            if zfspath.ends_with("/") {
-                zfspath.pop();
-                zfs_mount(&key, zfspath.to_string());
-            } else {
-                zfs_mount(&key, zfspath)
-            }
-        } // Print encryption key
-        Err(error) => panic!("{}", error),
+            zfs_mount(&key, zfspath);
+            drop(key);
+        }
+
+        Err(error) => {
+            eprintln!("Error: Failed to calculate hash from Yubikey\n{}", error);
+            exit(1)
+        }
     }
 }
 
@@ -49,7 +57,8 @@ pub fn unlock_zfs_file(pass: String, file: String, dataset: String, port: u16) {
     let key = [filehash, passhash].concat();
     let key = Sha512::digest(&key);
     let key = format!("{:x}", key);
-    zfs_mount(&key, dataset)
+    zfs_mount(&key, dataset);
+    drop(key);
 }
 
 pub fn create_zfs_file(pass: String, file: String, dataset: String, port: u16) {
@@ -63,22 +72,21 @@ pub fn create_zfs_file(pass: String, file: String, dataset: String, port: u16) {
     let key = [filehash, passhash].concat();
     let key = Sha512::digest(&key);
     let key = format!("{:x}", key);
-    zfs_create(&key, dataset)
+    zfs_create(&key, dataset);
+    drop(key);
 }
 
-pub fn create_zfs_yubi(pass: String, zfspath: String,slot:u8) {
-    let key = yubi::get_hash(&pass,slot); // Get encryption key
-    let mut zfspath = zfspath;
+pub fn create_zfs_yubi(pass: String, zfspath: String, slot: u8) {
+    let key = yubikey::get_hash(&pass, slot); // Get encryption key
+    let zfspath = zfspath;
     match key {
         Ok(key) => {
-            if zfspath.ends_with("/") {
-                zfspath.pop();
-                zfs_create(&key, zfspath.to_string());
-            } else {
-                zfs_create(&key, zfspath)
-            }
-        } // Print encryption key
-        Err(error) => panic!("{}", error),
+            zfs_create(&key, zfspath);
+            drop(key);
+        }
+        Err(error) => {
+            eprintln!("Error: Failed to calculate hash from Yubikey\n{}", error);
+            exit(1)
+        }
     }
 }
-
