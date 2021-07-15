@@ -83,11 +83,6 @@ impl Sargs {
         let mut file = String::from("NULL");
         let mut dataset = String::from("NULL");
 
-        if arg.is_present("pam") && !arg.is_present("zset") {
-            eprintln!("Error: specify zfs dataset to use with pam");
-            exit(1);
-        };
-
         let port: u16 = if arg.is_present("port") {
             arg.value_of("port")
                 .expect("Invalid Port")
@@ -106,6 +101,28 @@ impl Sargs {
         };
 
         let mode = if arg.is_present("pam") {
+            if !arg.is_present("zset") {
+                eprintln!("Error: specify zfs dataset to use with pam");
+                exit(1);
+            };
+            dataset = arg
+                .value_of("zset")
+                .expect("Invalid ZFS dataset")
+                .to_string();
+            if dataset.ends_with("/") {
+                dataset.pop();
+            };
+            let user = env::var("PAM_USER");
+            let user = match user {
+                Ok(u) => u,
+                Err(error) => {
+                    eprintln!("Error: PAM_USER Environment variable not found");
+                    eprintln!("Error: {}", error);
+                    exit(1)
+                }
+            };
+            dataset.push('/');
+            dataset.push_str(user.as_str());
             String::from("pam")
         } else if arg.is_present("create") {
             dataset = arg.value_of("create").expect("Inavlid Dataset").to_string();
@@ -130,31 +147,6 @@ impl Sargs {
             String::from("file")
         } else {
             String::from("password")
-        };
-
-        if dataset.ends_with("/") {
-            dataset.pop();
-        };
-
-        if arg.is_present("pam") {
-            dataset = arg
-                .value_of("zset")
-                .expect("Invalid ZFS dataset")
-                .to_string();
-            if dataset.ends_with("/") {
-                dataset.pop();
-            };
-            let user = env::var("PAM_USER");
-            let user = match user {
-                Ok(u) => u,
-                Err(error) => {
-                    eprintln!("Error: PAM_USER Environment variable not found");
-                    eprintln!("Error: {}", error);
-                    exit(1)
-                }
-            };
-            dataset.push('/');
-            dataset.push_str(user.as_str());
         };
 
         Sargs {

@@ -47,11 +47,11 @@ fn main() {
             match args.mode.as_str() {
                 "print" => {
                     println!("{}", key);
-                    drop(key);
+                    
                 }
-                "pam" => {zfs_mount(&key, args.dataset);drop(key);}
-                "mount" => {zfs_mount(&key, args.dataset);drop(key);}
-                "create" => {zfs_create(&key, args.dataset);drop(key);}
+                "pam" => {zfs_mount(&key, args.dataset);}
+                "mount" => {zfs_mount(&key, args.dataset);}
+                "create" => {zfs_create(&key, args.dataset);}
                 _ => unreachable!(),
             }
         }

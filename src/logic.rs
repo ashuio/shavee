@@ -12,12 +12,12 @@ pub fn print_mode_yubi(pass: &String, slot: u8) {
     let key = match key {
         Ok(key) => key,
         Err(error) => {
-            eprintln!("Error: Failed to calculate hash from Yubikey\n{}", error);
+            eprintln!("Error: Failed to run HMAC challenge on Yubikey on slot {}",slot);
+            eprintln!("Error: {}",error);
             exit(1)
         }
     };
     println!("{}", &key);
-    drop(key);
     exit(0);
 }
 
@@ -28,7 +28,6 @@ pub fn print_mode_file(pass: &String, file: &String, port: u16) {
     let key = [filehash, passhash].concat();
     let key = Sha512::digest(&key);
     println!("{:x}", &key);
-    drop(key);
     exit(0);
 }
 
@@ -37,11 +36,11 @@ pub fn unlock_zfs_yubi(pass: String, zfspath: String, slot: u8) {
     match key {
         Ok(key) => {
             zfs_mount(&key, zfspath);
-            drop(key);
         }
 
         Err(error) => {
-            eprintln!("Error: Failed to calculate hash from Yubikey\n{}", error);
+            eprintln!("Error: Failed to run HMAC challenge on Yubikey on slot {}",slot);
+            eprintln!("Error: {}",error);
             exit(1)
         }
     }
@@ -58,7 +57,7 @@ pub fn unlock_zfs_file(pass: String, file: String, dataset: String, port: u16) {
     let key = Sha512::digest(&key);
     let key = format!("{:x}", key);
     zfs_mount(&key, dataset);
-    drop(key);
+    
 }
 
 pub fn create_zfs_file(pass: String, file: String, dataset: String, port: u16) {
@@ -73,7 +72,6 @@ pub fn create_zfs_file(pass: String, file: String, dataset: String, port: u16) {
     let key = Sha512::digest(&key);
     let key = format!("{:x}", key);
     zfs_create(&key, dataset);
-    drop(key);
 }
 
 pub fn create_zfs_yubi(pass: String, zfspath: String, slot: u8) {
@@ -82,10 +80,10 @@ pub fn create_zfs_yubi(pass: String, zfspath: String, slot: u8) {
     match key {
         Ok(key) => {
             zfs_create(&key, zfspath);
-            drop(key);
         }
         Err(error) => {
-            eprintln!("Error: Failed to calculate hash from Yubikey\n{}", error);
+            eprintln!("Error: Failed to run HMAC challenge on Yubikey on slot {}",slot);
+            eprintln!("Error: {}",error);
             exit(1)
         }
     }

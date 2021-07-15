@@ -89,7 +89,7 @@ Flags/Options
 * `-p` : Enable PAM mode (Lower case p )
 * `-P` : Set port for HTTP and SFTP requests (Upper case P )
 * `-s` : Set Yubikey HMAC Slot (Can be either 1 or 2)
-* `-c` : Create ZFS dataset with the derived encryption key
+* `-c` : Create/Change key of ZFS dataset with the derived encryption key
 * `-z` : if present in conjunction with any of the above options, it will try to unlock and mount the given dataset with the derived key instead of printing it. Takes zfs dataset path as argument. ( Will automatically append username in PAM mode )
 
 **NOTE: The `-y` (Yubikey mode) flag and the `-f <path to file>` (File mode) option are interchangeable.**

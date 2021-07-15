@@ -69,7 +69,15 @@ pub fn zfs_mount(key: &String, dataset: String) {
         }
     };
 
-    let out = String::from_utf8(zfs_list.stdout).expect("Failed to parse list output");
+    let out = String::from_utf8(zfs_list.stdout);
+    let out = match out {
+        Ok(o) => o,
+        Err(error) => {
+            eprintln!("Error: Failed to parse zfs list output");
+            eprintln!("Error: {}",error);
+            exit(1)
+        }
+    };
     let mut list: Vec<&str> = out.split("\n").collect();
     list.pop(); // Remove trailing blank element
 
