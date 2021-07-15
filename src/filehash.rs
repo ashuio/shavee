@@ -1,16 +1,16 @@
 use curl;
 use sha2::{Digest, Sha512};
-use std::{io::Read, process::exit};
+use std::{
+    io::{BufRead, BufReader},
+    process::exit,
+};
 
 pub fn get_filehash(file: &String, port: u16) -> Vec<u8> {
-    if file.starts_with("https://")
-        || file.starts_with("http://")
-        || file.starts_with("sftp://")
-    {
+    if file.starts_with("https://") || file.starts_with("http://") || file.starts_with("sftp://") {
         get_filehash_http_sftp(&file, port)
     } else {
         let f = std::fs::File::open(&file);
-        let mut f = match f {
+        let f = match f {
             Ok(f) => f,
             Err(error) => {
                 eprintln!("Error: Failed to open file {}", file);
@@ -18,17 +18,30 @@ pub fn get_filehash(file: &String, port: u16) -> Vec<u8> {
                 exit(1)
             }
         };
-        let mut filehash: Vec<u8> = Vec::new();
-        let result = f.read_to_end(&mut filehash);
-        match result {
-            Ok(k) => eprintln!("Succesfully read {} bytes from {}",k,file),
-            Err(error) => {
-                eprintln!("Error: Failed to read file {}",file);
-                eprintln!("Error: {}",error);
-                exit(1)
+
+        let cap: usize = 131072 * 128;
+        let mut reader = BufReader::with_capacity(cap, f);
+        let mut hasher = Sha512::new();
+        loop {
+            let length = {
+                let buffer = reader.fill_buf();
+                let buffer = match buffer {
+                    Ok(b) => b,
+                    Err(error) => {
+                        eprintln!("Error: Failed to read file {}", file);
+                        eprintln!("Error: {}", error);
+                        exit(1)
+                    }
+                };
+                hasher.update(buffer);
+                buffer.len()
+            };
+            if length == 0 {
+                break;
             }
-        };
-        Sha512::digest(&filehash).to_vec()
+            reader.consume(length);
+        }
+        hasher.finalize().to_vec()
     }
 }
 
@@ -38,7 +51,9 @@ pub fn get_filehash_http_sftp(file: &String, port: u16) -> Vec<u8> {
     rfile.url(file).expect("Invalid URL");
 
     if port > 0 {
-        rfile.port(port).expect("Failed to set port on curl handler");
+        rfile
+            .port(port)
+            .expect("Failed to set port on curl handler");
     }
     rfile
         .fail_on_error(true)
