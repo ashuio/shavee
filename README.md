@@ -80,7 +80,7 @@ sudo cp target/release/shavee /usr/bin
 Modes
 
 * pam    : For use with the pam_exec.so module (Used with the `-p` flag)
-* create : Creates new Datasets with the derived key (Used with the `-c` option) 
+* create : Creates/Changes Key of a Dataset with the derived key (Used with the `-c` option) 
 
 Flags/Options
 

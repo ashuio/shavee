@@ -6,6 +6,7 @@ use std::{
 };
 
 pub fn get_filehash(file: &String, port: u16) -> Vec<u8> {
+    eprintln!("Reading file from {}",file);
     if file.starts_with("https://") || file.starts_with("http://") || file.starts_with("sftp://") {
         get_filehash_http_sftp(&file, port)
     } else {

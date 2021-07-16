@@ -8,6 +8,7 @@ pub fn get_hash(pass: &String, slot: u8) -> Result<String, io::Error> {
     let mut yubi = Yubico::new();
     // Search for Yubikey
     Ok(if let Ok(device) = yubi.find_yubikey() {
+        eprintln!("Yubikey found ... Running HMAC challenge on SLOT {}",slot);
         let challenge = Sha512::digest(&pass.as_bytes()); // Prepare Challenge
         let yslot = if slot == 1 {
             Slot::Slot1
@@ -26,7 +27,10 @@ pub fn get_hash(pass: &String, slot: u8) -> Result<String, io::Error> {
 
         let hmac_result = yubi.challenge_response_hmac(&challenge, config);
         let hmac_result = match hmac_result {
-            Ok(y) => y,
+            Ok(y) => {
+                eprintln!("HMAC challenge on Yubikey on SLOT {} ... [OK]",slot);
+                y
+            },
             Err(error) => {
                 eprintln!("Error: Failed to run HMAC challenge on Youbikey on Slot {}",slot);
                 eprintln!("Error: {}",error);
