@@ -2,7 +2,7 @@
 
 ![rust workflow](https://github.com/ashuio/shavee/actions/workflows/rust.yml/badge.svg)
 [![GitHub license](https://img.shields.io/badge/license-MIT-blue)](https://github.com/ashuio/shavee/blob/master/LICENSE)
-[![Keybase PGP](https://img.shields.io/keybase/pgp/ashutoshverma)](https://keybase.io/ashutoshverma/pgp_keys.asc?fingerprint=9dbf80e713d4a66d39d40b6f0b8cfc54f5e810d3)
+[![GPG](https://img.shields.io/keybase/pgp/ashutoshverma)](https://ashu.io/gpg/)
 ![Crates.io](https://img.shields.io/crates/v/shavee)
     
 shavee is a simple program to decrypt and mount encrypted ZFS user home directories at login using Yubikey HMAC or a Simple USB drive as 2FA written in rust.
@@ -33,7 +33,7 @@ In this mode the program looks for a file (can be any file) and use that along w
 
 File mode is set using the `-f <path to file>` option.
 
-File can be both a local file or a http(s) location 
+File can be a local file, a http(s) or a sftp location 
 
 Example HTTPS
 ```bash
@@ -54,6 +54,11 @@ shavee -f /mnt/usb/secret.png
 The idea with this method is to keep the file on a USB storage device or a Netork location you control and have it present during the login to derive the final encryption key.
 
 You can use any pre existing file of your choice.
+
+Or create one using
+```bash
+dd if=/dev/uranson of=./secretfile bs=4096 count=4096
+```
 
 **Note: Since the file becomes part of your encryption key and its Security cannot be guaranteed as with Yubikey you are responsible for keeping it secure.**
 
