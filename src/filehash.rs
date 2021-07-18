@@ -6,7 +6,7 @@ use std::{
 };
 
 pub fn get_filehash(file: &String, port: u16) -> Vec<u8> {
-    eprintln!("Reading file from {}",file);
+    eprintln!("Reading file from {}", file);
     if file.starts_with("https://") || file.starts_with("http://") || file.starts_with("sftp://") {
         get_filehash_http_sftp(&file, port)
     } else {
@@ -48,7 +48,7 @@ pub fn get_filehash(file: &String, port: u16) -> Vec<u8> {
 
 pub fn get_filehash_http_sftp(file: &String, port: u16) -> Vec<u8> {
     let mut rfile = curl::easy::Easy::new();
-    let mut data = Vec::new();
+    let mut filehash = Sha512::new();
     rfile.url(file).expect("Invalid URL");
 
     if port > 0 {
@@ -63,7 +63,7 @@ pub fn get_filehash_http_sftp(file: &String, port: u16) -> Vec<u8> {
         let mut transfer = rfile.transfer();
         transfer
             .write_function(|new_data| {
-                data.extend_from_slice(new_data);
+                filehash.update(new_data);
                 Ok(new_data.len())
             })
             .expect("Failed to Download file");
@@ -71,11 +71,11 @@ pub fn get_filehash_http_sftp(file: &String, port: u16) -> Vec<u8> {
         match result {
             Ok(r) => r,
             Err(error) => {
-                eprintln!("Error: Failed to get remote file");
+                eprintln!("Error: Failed to get remote file {}", file);
                 eprintln!("Error: {}", error);
                 exit(1)
             }
         };
     }
-    Sha512::digest(data.as_ref()).to_vec()
+    filehash.finalize().to_vec()
 }

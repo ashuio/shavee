@@ -12,6 +12,7 @@ pub fn zfs_mount(key: &String, dataset: String) {
         .arg("prompt")
         .arg(&dataset)
         .stdin(std::process::Stdio::piped())
+        .stderr(std::process::Stdio::piped())
         .spawn();
 
     let mut zfs = match zfs {
@@ -35,7 +36,14 @@ pub fn zfs_mount(key: &String, dataset: String) {
             if res.success() {
                 eprintln!("Loading encryption key for Dataset {} ... [OK]", dataset);
             } else {
+                let mut e: Vec<u8> = Vec::new();
+                zfs.stderr
+                    .expect("Failed to get stderr message")
+                    .read_to_end(&mut e)
+                    .expect("Failed to get stderr message");
+                let error = String::from_utf8_lossy(&e);
                 eprintln!("Loading encryption key for Dataset {} ... [FAIL]", dataset);
+                eprintln!("Error: {}\n", error);
             }
         }
         Err(error) => {
@@ -59,8 +67,10 @@ pub fn zfs_mount(key: &String, dataset: String) {
             if z.status.success() {
                 z
             } else {
+                let e = z.stderr;
+                let error = String::from_utf8_lossy(&e);
                 eprintln!("Error: Failed to get ZFS Dataset list");
-                eprintln!("Error: Is it valid?");
+                eprintln!("Error: {}", error);
                 exit(1)
             }
         }
@@ -83,7 +93,11 @@ pub fn zfs_mount(key: &String, dataset: String) {
     let list = list.split_whitespace();
 
     for i in list {
-        let zfs_mount = Command::new("zfs").arg("mount").arg(&i).spawn();
+        let zfs_mount = Command::new("zfs")
+            .arg("mount")
+            .arg(&i)
+            .stderr(std::process::Stdio::piped())
+            .spawn();
 
         let mut zfs_mount = match zfs_mount {
             Ok(z) => z,
@@ -101,7 +115,15 @@ pub fn zfs_mount(key: &String, dataset: String) {
                 if res.success() {
                     eprintln!("Mounting Dataset {} ... [OK]", i);
                 } else {
+                    let mut e: Vec<u8> = Vec::new();
+                    zfs_mount
+                        .stderr
+                        .expect("Failed to get stderr essage")
+                        .read_to_end(&mut e)
+                        .expect("Failed to get stderr message");
+                    let error = String::from_utf8_lossy(&e);
                     eprintln!("Mounting Dataset {} ... [FAIL]", i);
+                    eprintln!("Error: {}\n", error);
                 }
             }
             Err(error) => {
@@ -130,15 +152,7 @@ pub fn zfs_create(key: &String, dataset: String) {
     match zfs_list {
         Ok(z) => {
             if z.status.success() {
-                let list = String::from_utf8(z.stdout);
-                let list = match list {
-                    Ok(list) => list,
-                    Err(error) => {
-                        eprintln!("Error: Failed to parse zfs list ouput");
-                        eprintln!("{}", error);
-                        exit(1)
-                    }
-                };
+                let list = String::from_utf8_lossy(&z.stdout);
                 let list = list.split_whitespace();
                 for i in list {
                     let zfs_changekey = Command::new("zfs")
@@ -204,6 +218,7 @@ pub fn zfs_create(key: &String, dataset: String) {
                     .arg("keylocation=prompt")
                     .arg(&dataset)
                     .stdin(std::process::Stdio::piped())
+                    .stderr(std::process::Stdio::piped())
                     .spawn();
 
                 let mut zfs = match zfs {
@@ -227,7 +242,14 @@ pub fn zfs_create(key: &String, dataset: String) {
                         if res.success() {
                             eprintln!("Creating encrypted ZFS Dataset {} ... [OK]", dataset);
                         } else {
+                            let mut e: Vec<u8> = Vec::new();
+                            zfs.stderr
+                                .expect("Failed to read stderr")
+                                .read_to_end(&mut e)
+                                .expect("Failed to read from stderr");
+                            let error = String::from_utf8_lossy(&e);
                             eprintln!("Creating encrypted ZFS Dataset {} ... [FAIL]", &dataset);
+                            eprintln!("Error: {}\n", error);
                         }
                     }
                     Err(error) => {
