@@ -29,16 +29,14 @@ fn main() {
 
     match args.umode.as_str() {
         "yubikey" => match args.mode.as_str() {
-            "print" => {print_mode_yubi(&pass, args.yslot);drop(pass);}
-            "pam" => unlock_zfs_yubi(pass, args.dataset, args.yslot),
-            "mount" => unlock_zfs_yubi(pass, args.dataset, args.yslot),
+            "print" => {print_mode_yubi(pass, args.yslot);}
+            "pam" | "mount" => unlock_zfs_yubi(pass, args.dataset, args.yslot),
             "create" => create_zfs_yubi(pass, args.dataset, args.yslot),
             _ => unreachable!(),
         },
         "file" => match args.mode.as_str() {
-            "print" => {print_mode_file(&pass, &args.file, args.port);drop(pass);}
-            "pam" => unlock_zfs_file(pass, args.file, args.dataset, args.port),
-            "mount" => unlock_zfs_file(pass, args.file, args.dataset, args.port),
+            "print" => {print_mode_file(pass, &args.file, args.port);}
+            "pam" | "mount" => unlock_zfs_file(pass, args.file, args.dataset, args.port),
             "create" => create_zfs_file(pass, args.file, args.dataset, args.port),
             _ => unreachable!(),
         },

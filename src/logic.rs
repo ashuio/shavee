@@ -7,7 +7,7 @@ use crate::{
 use sha2::{Digest, Sha512};
 use std::process::exit;
 
-pub fn print_mode_yubi(pass: &String, slot: u8) {
+pub fn print_mode_yubi(pass: String, slot: u8) {
     let key = yubikey::get_hash(&pass, slot); // Get encryption key
     let key = match key {
         Ok(key) => key,
@@ -21,7 +21,7 @@ pub fn print_mode_yubi(pass: &String, slot: u8) {
     exit(0);
 }
 
-pub fn print_mode_file(pass: &String, file: &String, port: u16) {
+pub fn print_mode_file(pass: String, file: &String, port: u16) {
     let passhash = Sha512::digest(&pass.as_bytes()).to_vec();
 
     let filehash = get_filehash(&file, port);
