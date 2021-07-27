@@ -44,8 +44,7 @@ fn main() {
             let key = format!("{:x}", Sha512::digest(pass.as_bytes()));
             match args.mode.as_str() {
                 "print" => println!("{}", key),
-                "pam" => zfs_mount(&key, args.dataset),
-                "mount" => zfs_mount(&key, args.dataset),
+                "pam" | "mount" => zfs_mount(&key, args.dataset),
                 "create" => zfs_create(&key, args.dataset),
                 _ => unreachable!(),
             }
