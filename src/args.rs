@@ -161,9 +161,43 @@ impl Sargs {
 }
 
 fn port_check(v: String) -> Result<(), String> {
-    if v.parse::<u16>().is_ok() {
+    if v.parse::<u16>().is_ok() && v.parse::<u16>().unwrap() != 0 {
         return Ok(());
     } else {
         return Err(String::from("Error: Inavlid port number"));
+    }
+}
+
+// This section implements unit tests for the fuctions in this module.
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    //This tests port_check() function for the valid ports
+    #[test]
+    fn port_checked_is_valid() {
+        //Few examples of valid ports. Important to have the boundry values tested.
+        let valid_ports = vec!["1", "80", "65535"];
+        for valid_port in valid_ports.iter() {
+            match port_check(valid_port.to_string()) {
+                Err(_) => panic!("The port number {} should have been accepted!",valid_port),
+                Ok(()) => continue,
+           }
+        }
+    }
+    
+    
+    //This tests port_check() function for the invalid ports
+    #[test]
+    fn port_checked_is_invalid() {
+        //Few examples of valid ports. Important to have the boundry values tested.
+	    //Port 0 is reserved by IANA, it is technically invalid to use.
+        let invalid_ports = vec!["-1", "65536", "a", "0"];
+        for invalid_port in invalid_ports.iter() {
+            match port_check(invalid_port.to_string()) {
+                Ok(()) => panic!("The port number {} not should have been accepted!",invalid_port),
+                Err(_) => continue,
+           }
+        }
     }
 }
