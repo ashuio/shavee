@@ -164,7 +164,7 @@ fn port_check(v: String) -> Result<(), String> {
     if v.parse::<u16>().is_ok() && v.parse::<u16>().unwrap() != 0 {
         return Ok(());
     } else {
-        return Err(String::from("Error: Inavlid port number"));
+        return Err(String::from("Error: Invalid Port"));
     }
 }
 
