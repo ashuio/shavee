@@ -29,13 +29,13 @@ fn main() {
 
     match args.umode.as_str() {
         "yubikey" => match args.mode.as_str() {
-            "print" => {print_mode_yubi(pass, args.yslot);}
+            "print" => print_mode_yubi(pass, args.yslot),
             "pam" | "mount" => unlock_zfs_yubi(pass, args.dataset, args.yslot),
             "create" => create_zfs_yubi(pass, args.dataset, args.yslot),
             _ => unreachable!(),
         },
         "file" => match args.mode.as_str() {
-            "print" => {print_mode_file(pass, &args.file, args.port);}
+            "print" => print_mode_file(pass, &args.file, args.port),
             "pam" | "mount" => unlock_zfs_file(pass, args.file, args.dataset, args.port),
             "create" => create_zfs_file(pass, args.file, args.dataset, args.port),
             _ => unreachable!(),
@@ -43,13 +43,9 @@ fn main() {
         "password" => {
             let key = format!("{:x}", Sha512::digest(pass.as_bytes()));
             match args.mode.as_str() {
-                "print" => {
-                    println!("{}", key);
-                    
-                }
-                "pam" => {zfs_mount(&key, args.dataset);}
-                "mount" => {zfs_mount(&key, args.dataset);}
-                "create" => {zfs_create(&key, args.dataset);}
+                "print" => println!("{}", key),
+                "pam" | "mount" => zfs_mount(&key, args.dataset),
+                "create" => zfs_create(&key, args.dataset),
                 _ => unreachable!(),
             }
         }
