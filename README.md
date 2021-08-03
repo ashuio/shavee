@@ -112,13 +112,13 @@ It is recommended to run the command to change keys again of your Datasets after
 **You can change/update the key for existing ZFS datasets by running**
 
 ```bash
-shavee -c <zfs dataset path>
+shavee -c -z <zfs dataset path>
 ```
 
 **Example**
 
 ```bash
-shavee -y -c zroot/data/home/hunter
+shavee -y -c -z zroot/data/home/hunter
 ```
 
 Here we use Yubikey as our second factor. (Can be omitted for password only auth)
@@ -130,20 +130,20 @@ Here we use Yubikey as our second factor. (Can be omitted for password only auth
 To create a new dataset with our derived encryption key simply run
 
 ```bash
-sudo shavee -c <Desired dataset>
+sudo shavee -c -z <Desired dataset>
 ```
 
 Example
 
 ```bash
-sudo shavee -f /mnt/usb/secretfile -c zroot/data/home/hunter
+sudo shavee -f /mnt/usb/secretfile -c -z zroot/data/home/hunter
 ```
 Here we use a FILE for our second factor (Can be omitted for password auth only)
 
 
 ## Use shavee to unlock and mount any zfs patition
 
-Simply add the option `-z` to unlock any zfs dataset
+Simply use the option `-z` to unlock any zfs dataset
 
 **Example**
 
