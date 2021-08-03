@@ -196,7 +196,7 @@ impl Sargs {
                 // before it is mounted.
                 // Clap has already validated PAM_USER existence.
                 dataset.push('/');
-                dataset.push_str(arg.value_of("user").expect(UNREACHABLE_CODE));
+                dataset.push_str(env::var("PAM_USER").expect(UNREACHABLE_CODE).as_str());
                 String::from("pam")
             } else if arg.is_present("create") {
                 String::from("create")
