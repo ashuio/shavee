@@ -2,17 +2,13 @@ mod args;
 mod filehash;
 mod logic;
 mod yubikey;
-mod zfs;
 
-use std::process::exit;
-
+use crate::logic::{create_zfs_file, create_zfs_yubi, unlock_zfs_pass};
 use crate::logic::{print_mode_file, print_mode_yubi, unlock_zfs_file, unlock_zfs_yubi};
-use crate::{
-    logic::{create_zfs_file, create_zfs_yubi},
-    zfs::{zfs_create, zfs_mount},
-};
 use args::Sargs;
 use sha2::{Digest, Sha512};
+use shavee_zfs::zfs_create;
+use std::process::exit;
 
 fn main() {
     let args = Sargs::new();
@@ -44,8 +40,14 @@ fn main() {
             let key = format!("{:x}", Sha512::digest(pass.as_bytes()));
             match args.mode.as_str() {
                 "print" => println!("{}", key),
-                "pam" | "mount" => zfs_mount(&key, args.dataset),
-                "create" => zfs_create(&key, args.dataset),
+                "pam" | "mount" => unlock_zfs_pass(key, args.dataset),
+                "create" => match zfs_create(key, args.dataset) {
+                    Ok(()) => (),
+                    Err(e) => {
+                        eprintln!("Error: {}", e);
+                        exit(1)
+                    }
+                },
                 _ => unreachable!(),
             }
         }

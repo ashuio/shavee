@@ -1,7 +1,6 @@
 [workspace]
-members = ["shavee-bin", "shavee-pam"]
+members = ["shavee-bin", "shavee-pam", "shavee-zfs"]
 
 [profile.release]
-
 lto = true
 opt-level = 3

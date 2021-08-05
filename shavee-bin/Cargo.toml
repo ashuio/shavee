@@ -10,11 +10,6 @@ documentation = "https://shavee.ashu.io"
 readme = "README.md"
 repository = "https://github.com/ashuio/shavee"
 
-[profile.release]
-
-lto = true
-opt-level = 3
-
 
 [dependencies]
 
@@ -23,3 +18,4 @@ yubico_manager = "0.8.2"
 clap = "2.33.3"
 rpassword = "5.0.1"
 curl = "0.4.38"
+shavee-zfs = {path = "../shavee-zfs"}
