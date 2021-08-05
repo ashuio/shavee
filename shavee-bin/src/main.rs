@@ -1,13 +1,11 @@
 mod args;
-mod filehash;
 mod logic;
-mod yubikey;
 
-use crate::logic::{create_zfs_file, create_zfs_yubi, unlock_zfs_pass};
-use crate::logic::{print_mode_file, print_mode_yubi, unlock_zfs_file, unlock_zfs_yubi};
+use logic::{create_zfs_file, create_zfs_yubi, unlock_zfs_pass};
+use logic::{print_mode_file, print_mode_yubi, unlock_zfs_file, unlock_zfs_yubi};
 use args::Sargs;
 use sha2::{Digest, Sha512};
-use shavee_zfs::zfs_create;
+use shavee_lib::zfs::*;
 use std::process::exit;
 
 fn main() {

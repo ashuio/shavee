@@ -1,11 +1,12 @@
-use crate::{filehash::get_filehash, yubikey};
-use shavee_zfs::*;
+use shavee_lib::{filehash::get_filehash};
+use shavee_lib::zfs::*;
+use shavee_lib::yubikey::*;
 
 use sha2::{Digest, Sha512};
 use std::process::exit;
 
 pub fn print_mode_yubi(pass: String, slot: u8) {
-    let key = yubikey::get_hash(&pass, slot); // Get encryption key
+    let key = yubikey_get_hash(&pass, slot); // Get encryption key
     let key = match key {
         Ok(key) => key,
         Err(error) => {
@@ -24,7 +25,12 @@ pub fn print_mode_yubi(pass: String, slot: u8) {
 pub fn print_mode_file(pass: String, file: &String, port: u16) {
     let passhash = Sha512::digest(&pass.as_bytes()).to_vec();
 
-    let filehash = get_filehash(&file, port);
+    let filehash = match  get_filehash(file.clone(), port) {
+        Ok(i) => i,
+        Err(e) => {
+            eprint!("Error: {}",e);
+            exit(1)}
+    };
     let key = [filehash, passhash].concat();
     let key = Sha512::digest(&key);
     println!("{:x}", &key);
@@ -32,7 +38,7 @@ pub fn print_mode_file(pass: String, file: &String, port: u16) {
 }
 
 pub fn unlock_zfs_yubi(pass: String, zfspath: String, slot: u8) {
-    let key = yubikey::get_hash(&pass, slot); // Get encryption key
+    let key = yubikey_get_hash(&pass, slot); // Get encryption key
     match key {
         Ok(key) => {
             match zfs_loadkey(key, zfspath.clone()) {
@@ -68,7 +74,13 @@ pub fn unlock_zfs_file(pass: String, file: String, dataset: String, port: u16) {
         dataset.pop();
     }
     let passhash = Sha512::digest(&pass.as_bytes()).to_vec();
-    let filehash = get_filehash(&file, port);
+    let filehash = match get_filehash(file.clone(), port) {
+        Ok(i) => i,
+        Err(e) => {
+            eprint!("Error: {}",e);
+            exit(1)}
+
+    };
     let key = [filehash, passhash].concat();
     let key = Sha512::digest(&key);
     let key = format!("{:x}", key);
@@ -95,7 +107,12 @@ pub fn create_zfs_file(pass: String, file: String, dataset: String, port: u16) {
     }
     let passhash = Sha512::digest(&pass.as_bytes()).to_vec();
 
-    let filehash = get_filehash(&file, port);
+    let filehash = match get_filehash(file.clone(), port) {
+        Ok(i) => i,
+        Err(e) => {
+            eprint!("Error: {}",e);
+            exit(1)}
+    };
     let key = [filehash, passhash].concat();
     let key = Sha512::digest(&key);
     let key = format!("{:x}", key);
@@ -109,7 +126,7 @@ pub fn create_zfs_file(pass: String, file: String, dataset: String, port: u16) {
 }
 
 pub fn create_zfs_yubi(pass: String, zfspath: String, slot: u8) {
-    let key = yubikey::get_hash(&pass, slot); // Get encryption key
+    let key = yubikey_get_hash(&pass, slot); // Get encryption key
     let zfspath = zfspath;
     match key {
         Ok(key) => {

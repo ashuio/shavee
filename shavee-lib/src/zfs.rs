@@ -214,3 +214,17 @@ pub fn zfs_create(key: String, dataset: String) -> Result<(), String> {
 
     Ok(())
 }
+
+pub fn zfs_umount(dataset: String) -> Result<(), String> {
+    match Command::new("zfs").arg("umount").arg(dataset).output() {
+        Ok(_) => return Ok(()),
+        Err(i) => return Err(i.to_string()),
+    };
+}
+
+pub fn zfs_unload_key(dataset: String) -> Result<(), String> {
+    match Command::new("zfs").arg("unload-key").arg(dataset).output() {
+        Ok(_) => return Ok(()),
+        Err(i) => return Err(i.to_string()),
+    };
+}

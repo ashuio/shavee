@@ -1,10 +1,9 @@
 use sha2::{Digest, Sha512};
-use std::process::exit;
-use std::{io, ops::Deref};
+use std::ops::Deref;
 use yubico_manager::config::{Config, Mode, Slot};
 use yubico_manager::Yubico;
 
-pub fn get_hash(pass: &String, slot: u8) -> Result<String, io::Error> {
+pub fn yubikey_get_hash(pass: &String, slot: u8) -> Result<String, String> {
     let mut yubi = Yubico::new();
     // Search for Yubikey
     Ok(if let Ok(device) = yubi.find_yubikey() {
@@ -12,12 +11,10 @@ pub fn get_hash(pass: &String, slot: u8) -> Result<String, io::Error> {
         let challenge = Sha512::digest(&pass.as_bytes()); // Prepare Challenge
         let yslot = if slot == 1 {
             Slot::Slot1
-        } else if slot == 2 {
+        } else  {
             Slot::Slot2
-        } else {
-            eprintln!("Invalid Slot");
-            std::process::exit(1)
         };
+
         let config = Config::default() // Configure Yubikey
             .set_vendor_id(device.vendor_id)
             .set_product_id(device.product_id)
@@ -32,14 +29,11 @@ pub fn get_hash(pass: &String, slot: u8) -> Result<String, io::Error> {
                 y
             },
             Err(error) => {
-                eprintln!("Error: Failed to run HMAC challenge on Youbikey on Slot {}",slot);
-                eprintln!("Error: {}",error);
-                exit(1)
+                return Err(error.to_string())
             }
         };
         format!("{:x}", &Sha512::digest(&hmac_result.deref())) // Prepare and return encryption key as hex string
     } else {
-        let e = io::Error::new(io::ErrorKind::NotFound, "Error: Yubikey not found");
-        return Err(e);
+        return Err("Yubikey not found".to_string());
     })
 }
