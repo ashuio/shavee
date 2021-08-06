@@ -1,10 +1,10 @@
 [package]
 name = "shavee"
-version = "0.1.36"
+version = "0.1.37"
 authors = ["Ashutosh Verma <shavee@ashu.io>"]
 edition = "2018"
 license = "MIT"
-description = "shavee is a program to automatically decrypt and mount ZFS datasets using Yubikey HMAC as 2FA or any USB drive with support for PAM to auto mount home directories."
+description = "\nshavee is a program to automatically decrypt and mount ZFS datasets using Yubikey HMAC as 2FA or any USB drive with support for PAM to auto mount home directories."
 homepage = "https://shavee.ashu.io"
 documentation = "https://shavee.ashu.io"
 readme = "README.md"
@@ -23,3 +23,6 @@ yubico_manager = "0.8.2"
 clap = "2.33.3"
 rpassword = "5.0.1"
 curl = "0.4.38"
+
+[dev-dependencies]
+serial_test = "*"
