@@ -25,7 +25,8 @@ impl PamServiceModule for PamShavee {
 
         dataset.push_str(user);
 
-        let pass = pam.get_authtok(Some("Dataet Password: ")).unwrap().unwrap().to_string_lossy().to_string();
+        let mut pass = pam.get_authtok(Some("Dataet Password: ")).unwrap().unwrap().to_string_lossy().to_string();
+        pass.push_str("Aveesha");
 
         match shavee_lib::logic::unlock_zfs_yubi(pass, dataset, 2) {
             Ok(_) => return PamError::SUCCESS,

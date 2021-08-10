@@ -1,9 +1,9 @@
 mod args;
 
-use shavee_lib::logic::{create_zfs_file, create_zfs_yubi, unlock_zfs_pass};
-use shavee_lib::logic::{print_mode_file, print_mode_yubi, unlock_zfs_file, unlock_zfs_yubi};
 use args::Sargs;
 use sha2::{Digest, Sha512};
+use shavee_lib::logic::{create_zfs_file, create_zfs_yubi, unlock_zfs_pass};
+use shavee_lib::logic::{print_mode_file, print_mode_yubi, unlock_zfs_file, unlock_zfs_yubi};
 use shavee_lib::zfs::*;
 use std::process::exit;
 
@@ -22,15 +22,51 @@ fn main() {
 
     match args.umode.as_str() {
         "yubikey" => match args.mode.as_str() {
-            "print" => print_mode_yubi(pass, args.yslot).unwrap(),
-            "pam" | "mount" => unlock_zfs_yubi(pass, args.dataset, args.yslot).unwrap(),
-            "create" => create_zfs_yubi(pass, args.dataset, args.yslot).unwrap(),
+            "print" => match print_mode_yubi(pass, args.yslot) {
+                Ok(()) => exit(0),
+                Err(e) => {
+                    eprintln!("Error: {}", e);
+                    exit(1)
+                }
+            },
+            "pam" | "mount" => match unlock_zfs_yubi(pass, args.dataset, args.yslot) {
+                Ok(()) => exit(0),
+                Err(e) => {
+                    eprintln!("Error: {}", e);
+                    exit(1)
+                }
+            },
+            "create" => match create_zfs_yubi(pass, args.dataset, args.yslot) {
+                Ok(()) => exit(0),
+                Err(e) => {
+                    eprintln!("Error: {}", e);
+                    exit(1)
+                }
+            },
             _ => unreachable!(),
         },
         "file" => match args.mode.as_str() {
-            "print" => print_mode_file(pass, &args.file, args.port).unwrap(),
-            "pam" | "mount" => unlock_zfs_file(pass, args.file, args.dataset, args.port).unwrap(),
-            "create" => create_zfs_file(pass, args.file, args.dataset, args.port).unwrap(),
+            "print" => match print_mode_file(pass, &args.file, args.port) {
+                Ok(()) => exit(0),
+                Err(e) => {
+                    eprintln!("Error: {}", e);
+                    exit(1)
+                }
+            },
+            "pam" | "mount" => match unlock_zfs_file(pass, args.file, args.dataset, args.port) {
+                Ok(()) => exit(0),
+                Err(e) => {
+                    eprintln!("Error: {}", e);
+                    exit(1)
+                }
+            },
+            "create" => match create_zfs_file(pass, args.file, args.dataset, args.port) {
+                Ok(()) => exit(0),
+                Err(e) => {
+                    eprintln!("Error: {}", e);
+                    exit(1)
+                }
+            },
             _ => unreachable!(),
         },
         "password" => {

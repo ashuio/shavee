@@ -72,6 +72,7 @@ impl Sargs {
                     .long("pam")
                     .takes_value(false)
                     .required(false)
+                    .requires("user")
                     .help("Enable PAM mode")
                     .conflicts_with("create")
                     .requires("user")   // It requires PAM_USER env variable
