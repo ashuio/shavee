@@ -1,7 +1,8 @@
+use std::error::Error;
 use std::io::prelude::*;
 use std::process::Command;
 
-pub fn zfs_loadkey(key: String, dataset: String) -> Result<(), String> {
+pub fn zfs_loadkey(key: String, dataset: String) -> Result<(), Box<dyn Error>> {
     let zfs = Command::new("zfs") // Call zfs mount
         .arg("load-key")
         .arg("-L")
@@ -13,7 +14,7 @@ pub fn zfs_loadkey(key: String, dataset: String) -> Result<(), String> {
 
     let mut zfs = match zfs {
         Ok(z) => z,
-        Err(error) => return Err(error.to_string()),
+        Err(error) => return Err(error.into()),
     };
 
     let zstdin = zfs
@@ -22,13 +23,10 @@ pub fn zfs_loadkey(key: String, dataset: String) -> Result<(), String> {
 
     let zstdin = match zstdin {
         Some(i) => i,
-        None => return Err("Failed to get ZFS stdin".to_string()),
+        None => return Err("Failed to lock stdin".to_string().into()),
     };
 
-    match zstdin.write_all(&key.as_bytes()) {
-        Ok(()) => (),
-        Err(error) => return Err(error.to_string()),
-    };
+    zstdin.write_all(&key.as_bytes())?;
 
     let result = zfs.wait();
     match result {
@@ -36,14 +34,14 @@ pub fn zfs_loadkey(key: String, dataset: String) -> Result<(), String> {
             if res.success() {
                 return Ok(());
             } else {
-                return Err("Failed to mount dataset".to_string());
+                return Err("Failed to mount dataset".to_string().into());
             }
         }
-        Err(error) => return Err(error.to_string()),
+        Err(error) => return Err(error.into()),
     };
 }
 
-pub fn zfs_list(dataset: String) -> Result<Vec<String>, String> {
+pub fn zfs_list(dataset: String) -> Result<Vec<String>, Box<dyn Error>> {
     let zfs_list = Command::new("zfs")
         .arg("list")
         .arg("-H")
@@ -58,21 +56,15 @@ pub fn zfs_list(dataset: String) -> Result<Vec<String>, String> {
             if z.status.success() {
                 z
             } else {
-                return Err("Failed to get ZFS Dataset list".to_string());
+                return Err(String::from_utf8_lossy(&z.stderr).to_string().into());
             }
         }
-        Err(error) => return Err(error.to_string()),
+        Err(error) => return Err(error.into()),
     };
 
-    let out = String::from_utf8(zfs_list.stdout);
-    let list = match out {
-        Ok(o) => o,
-        Err(error) => {
-            return Err(error.to_string());
-        }
-    };
+    let out = String::from_utf8(zfs_list.stdout)?;
 
-    let list = list.split_whitespace();
+    let list = out.split_whitespace();
     let mut dlist: Vec<String> = Vec::new();
 
     for i in list {
@@ -82,33 +74,7 @@ pub fn zfs_list(dataset: String) -> Result<Vec<String>, String> {
     return Ok(dlist);
 }
 
-pub fn zfs_mount(dataset: String) -> Result<(), String> {
-    let zfs_mount = Command::new("zfs")
-        .arg("mount")
-        .arg(dataset)
-        .stderr(std::process::Stdio::piped())
-        .spawn();
-
-    let mut zfs_mount = match zfs_mount {
-        Ok(z) => z,
-        Err(error) => return Err(error.to_string()),
-    };
-
-    let result = zfs_mount.wait();
-
-    match result {
-        Ok(ecode) => {
-            if ecode.success() {
-                return Ok(());
-            } else {
-                return Err("Failed to mount ZFS Dataset".to_string());
-            }
-        }
-        Err(error) => return Err(error.to_string()),
-    }
-}
-
-pub fn zfs_create(key: String, dataset: String) -> Result<(), String> {
+pub fn zfs_create(key: String, dataset: String) -> Result<(), Box<dyn Error>> {
     let zfs_list = Command::new("zfs")
         .arg("list")
         .arg("-H")
@@ -124,7 +90,7 @@ pub fn zfs_create(key: String, dataset: String) -> Result<(), String> {
                 let list = String::from_utf8_lossy(&z.stdout);
                 let list = list.split_whitespace();
                 for i in list {
-                    let zfs_changekey = Command::new("zfs")
+                    let mut zfs_changekey = Command::new("zfs")
                         .arg("change-key")
                         .arg("-o")
                         .arg("keylocation=prompt")
@@ -132,12 +98,7 @@ pub fn zfs_create(key: String, dataset: String) -> Result<(), String> {
                         .arg("keyformat=passphrase")
                         .arg(&i)
                         .stdin(std::process::Stdio::piped())
-                        .spawn();
-
-                    let mut zfs_changekey = match zfs_changekey {
-                        Ok(z) => z,
-                        Err(error) => return Err(error.to_string()),
-                    };
+                        .spawn()?;
 
                     let zstdin = zfs_changekey
                         .stdin // Supply encryption key via stdin
@@ -145,13 +106,10 @@ pub fn zfs_create(key: String, dataset: String) -> Result<(), String> {
 
                     let zstdin = match zstdin {
                         Some(i) => i,
-                        None => return Err("Failed to get ZFS stdin".to_string()),
+                        None => return Err("Failed to get ZFS stdin".into()),
                     };
 
-                    match zstdin.write_all(&key.as_bytes()) {
-                        Ok(()) => (),
-                        Err(error) => return Err(error.to_string()),
-                    };
+                    zstdin.write_all(&key.as_bytes())?;
 
                     let result = zfs_changekey.wait();
                     match result {
@@ -159,14 +117,14 @@ pub fn zfs_create(key: String, dataset: String) -> Result<(), String> {
                             if res.success() {
                                 return Ok(());
                             } else {
-                                return Err("Failed to change key".to_string());
+                                return Err("Failed to change key".into());
                             }
                         }
-                        Err(error) => return Err(error.to_string()),
+                        Err(error) => return Err(error.into()),
                     };
                 }
             } else {
-                let zfs = Command::new("zfs") // Call zfs create
+                let mut zfs = Command::new("zfs") // Call zfs create
                     .arg("create")
                     .arg("-o")
                     .arg("encryption=on")
@@ -177,12 +135,7 @@ pub fn zfs_create(key: String, dataset: String) -> Result<(), String> {
                     .arg(&dataset)
                     .stdin(std::process::Stdio::piped())
                     .stderr(std::process::Stdio::piped())
-                    .spawn();
-
-                let mut zfs = match zfs {
-                    Ok(z) => z,
-                    Err(error) => return Err(error.to_string()),
-                };
+                    .spawn()?;
 
                 zfs.stdin // Supply encryption key via stdin
                     .as_mut()
@@ -202,29 +155,54 @@ pub fn zfs_create(key: String, dataset: String) -> Result<(), String> {
                                 .read_to_end(&mut e)
                                 .expect("Failed to read from stderr");
                             let error = String::from_utf8_lossy(&e);
-                            return Err(error.to_string());
+                            return Err(error.into());
                         }
                     }
-                    Err(error) => return Err(error.to_string()),
+                    Err(error) => return Err(error.into()),
                 };
             }
         }
-        Err(error) => return Err(error.to_string()),
+        Err(error) => return Err(error.into()),
     };
 
     Ok(())
 }
 
-pub fn zfs_umount(dataset: String) -> Result<(), String> {
-    match Command::new("zfs").arg("umount").arg(dataset).output() {
-        Ok(_) => return Ok(()),
-        Err(i) => return Err(i.to_string()),
+pub fn zfs_mount(dataset: String) -> Result<(), Box<dyn Error>> {
+    match Command::new("zfs").arg("mount").arg(dataset).output() {
+        Ok(z) => {
+            if z.status.success() {
+                return Ok(());
+            } else {
+                return Err(String::from_utf8_lossy(&z.stderr).to_string().into());
+            };
+        }
+        Err(i) => return Err(i.into()),
     };
 }
 
-pub fn zfs_unload_key(dataset: String) -> Result<(), String> {
+pub fn zfs_umount(dataset: String) -> Result<(), Box<dyn Error>> {
+    match Command::new("zfs").arg("umount").arg(dataset).output() {
+        Ok(z) => {
+            if z.status.success() {
+                return Ok(());
+            } else {
+                return Err(String::from_utf8_lossy(&z.stderr).to_string().into());
+            };
+        }
+        Err(i) => return Err(i.into()),
+    };
+}
+
+pub fn zfs_unload_key(dataset: String) -> Result<(), Box<dyn Error>> {
     match Command::new("zfs").arg("unload-key").arg(dataset).output() {
-        Ok(_) => return Ok(()),
-        Err(i) => return Err(i.to_string()),
+        Ok(z) => {
+            if z.status.success() {
+                return Ok(());
+            } else {
+                return Err(String::from_utf8_lossy(&z.stderr).to_string().into());
+            };
+        }
+        Err(i) => return Err(i.into()),
     };
 }

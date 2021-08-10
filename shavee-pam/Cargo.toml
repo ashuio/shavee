@@ -1,16 +1,16 @@
 [package]
-name = "shavee-pam"
+name = "shavee_pam"
 authors = ["Ashutosh Verma <shavee@ashu.io>"]
 version = "0.1.0"
 edition = "2018"
 license = "MIT"
 
 [lib]
-name = "pam_shavee"
 crate-type = ["cdylib"]
 
 [dependencies]
 pamsm = {version="0.5.0", features=["libpam"] }
+shavee_lib = {path = "../shavee-lib"}
 
 
 

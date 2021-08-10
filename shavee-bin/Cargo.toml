@@ -16,4 +16,6 @@ repository = "https://github.com/ashuio/shavee"
 sha2 = "0.9.5"
 clap = "2.33.3"
 rpassword = "5.0.1"
-shavee_lib = {path = "../shavee-lib"}
+shavee_lib = {path="../shavee-lib"}
+# shavee_lib = {git = "https://github.com/ashuio/shavee", branch = "0.1.4"}
+

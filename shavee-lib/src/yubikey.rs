@@ -3,6 +3,8 @@ use std::ops::Deref;
 use yubico_manager::config::{Config, Mode, Slot};
 use yubico_manager::Yubico;
 
+
+
 pub fn yubikey_get_hash(pass: &String, slot: u8) -> Result<String, String> {
     let mut yubi = Yubico::new();
     // Search for Yubikey
