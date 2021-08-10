@@ -1,7 +1,7 @@
 use std::io::prelude::*;
 use std::process::{exit, Command};
 
-pub fn zfs_mount(key: &String, dataset: String) {
+pub fn zfs_load_key(key: &String, dataset: String) {
     let mut dataset = dataset;
     if dataset.ends_with("/") {
         dataset.pop();
@@ -52,7 +52,14 @@ pub fn zfs_mount(key: &String, dataset: String) {
             exit(1)
         }
     };
+}
 
+pub fn zfs_mount(key: &String, dataset: String) {
+    zfs_load_key(key, dataset.clone());
+    let mut dataset = dataset;
+    if dataset.ends_with("/") {
+        dataset.pop();
+    };
     let zfs_list = Command::new("zfs")
         .arg("list")
         .arg("-H")

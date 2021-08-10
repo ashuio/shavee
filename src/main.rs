@@ -36,7 +36,7 @@ fn main() {
         },
         "file" => match args.mode.as_str() {
             "print" => print_mode_file(pass, &args.file, args.port),
-            "pam" | "mount" => unlock_zfs_file(pass, args.file, args.dataset, args.port),
+            "pam" | "mount" | "load-key" => unlock_zfs_file(pass, args.file, args.dataset, args.port, args.mode),
             "create" => create_zfs_file(pass, args.file, args.dataset, args.port),
             _ => unreachable!(),
         },

@@ -78,6 +78,15 @@ impl Sargs {
                     .value_name("zset")
                     .required(false)
                     .help("ZFS Dataset eg. \"zroot/data/home/\""),
+            )
+            .arg(
+                Arg::with_name("load-key")
+                    .short("l")
+                    .long("load-key")
+                    .takes_value(true)
+                    .value_name("load-key")
+                    .required(false)
+                    .help("ZFS Dataset to load the key for (without mounting) eg. \"zroot/data/home/\""),
             );
         let arg = app.get_matches();
         let mut file = String::from("NULL");
@@ -133,6 +142,12 @@ impl Sargs {
                 .expect("Invalid ZFS Dataset")
                 .to_string();
             String::from("mount")
+        } else if arg.is_present("load-key") {
+            dataset = arg
+                .value_of("load-key")
+                .expect("Invalid ZFS Dataset")
+                .to_string();
+            String::from("load-key")
         } else {
             String::from("print")
         };

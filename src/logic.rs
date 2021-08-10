@@ -1,7 +1,7 @@
 use crate::{
     filehash::get_filehash,
     yubikey,
-    zfs::{zfs_create, zfs_mount},
+    zfs::{zfs_create, zfs_load_key, zfs_mount},
 };
 
 use sha2::{Digest, Sha512};
@@ -46,7 +46,7 @@ pub fn unlock_zfs_yubi(pass: String, zfspath: String, slot: u8) {
     }
 }
 
-pub fn unlock_zfs_file(pass: String, file: String, dataset: String, port: u16) {
+pub fn unlock_zfs_file(pass: String, file: String, dataset: String, port: u16, mode: String) {
     let mut dataset = dataset;
     if dataset.ends_with("/") {
         dataset.pop();
@@ -56,8 +56,13 @@ pub fn unlock_zfs_file(pass: String, file: String, dataset: String, port: u16) {
     let key = [filehash, passhash].concat();
     let key = Sha512::digest(&key);
     let key = format!("{:x}", key);
-    zfs_mount(&key, dataset);
-    
+
+    if mode.as_str() == "load-key" {
+        zfs_load_key(&key, dataset)
+    } else {
+        zfs_mount(&key, dataset);
+    }
+
 }
 
 pub fn create_zfs_file(pass: String, file: String, dataset: String, port: u16) {
