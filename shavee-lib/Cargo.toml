@@ -11,3 +11,6 @@ yubico_manager = "0.8.2"
 sha2 = "0.9.5"
 curl = "0.4.38"
 pbkdf2 = "0.8.0"
+
+[dev-dependencies]
+tempfile = "*"
