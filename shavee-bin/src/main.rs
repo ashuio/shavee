@@ -1,16 +1,17 @@
 mod args;
 
 use args::Sargs;
-use sha2::{Digest, Sha512};
+use base64::encode_config;
 use shavee_lib::logic::{create_zfs_file, create_zfs_yubi, unlock_zfs_pass};
 use shavee_lib::logic::{print_mode_file, print_mode_yubi, unlock_zfs_file, unlock_zfs_yubi};
+use shavee_lib::password::hash_argon2;
 use shavee_lib::zfs::*;
 use std::process::exit;
 
 fn main() {
     let args = Sargs::new();
     let pass = rpassword::prompt_password_stderr("Dataset Password: ");
-    let mut pass = match pass {
+    let pass = match pass {
         Ok(pass) => pass,
         Err(error) => {
             eprintln!("Error: Failed to read Password");
@@ -18,7 +19,6 @@ fn main() {
             exit(1)
         }
     };
-    pass.push_str("Aveesha");
 
     match args.umode.as_str() {
         "yubikey" => match args.mode.as_str() {
@@ -70,7 +70,8 @@ fn main() {
             _ => unreachable!(),
         },
         "password" => {
-            let key = format!("{:x}", Sha512::digest(pass.as_bytes()));
+            let key =  hash_argon2(pass.into_bytes());
+            let key = encode_config(key, base64::STANDARD_NO_PAD);
             match args.mode.as_str() {
                 "print" => println!("{}", key),
                 "pam" | "mount" => unlock_zfs_pass(key, args.dataset).unwrap(),
