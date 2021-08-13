@@ -5,14 +5,27 @@ use std::ffi::OsString;
 use clap::{App, Arg, crate_authors, crate_description, crate_name, crate_version};
 
 #[derive(Debug, PartialEq)]
+pub enum Umode {
+    Yubikey,
+    File,
+    Password,
+}
 
+#[derive(Debug, PartialEq)]
+pub enum Mode {
+    Create,
+    Mount,
+    Print,
+}
+
+#[derive(Debug, PartialEq)]
 pub struct Sargs {
-    pub mode: String,
-    pub port: u16,
-    pub file: String,       // TODO: use Option() to avoid need for NULL
+    pub mode: Mode,
+    pub port: Option<u16>,
+    pub file: Option<String>,
     pub yslot: u8,
-    pub umode: String,
-    pub dataset: String,    // TODO: use Option() to avoid need for NULL
+    pub umode: Umode,
+    pub dataset: Option<String>,
 }
 
 impl Sargs {
@@ -72,22 +85,11 @@ impl Sargs {
                     .long("pam")
                     .takes_value(false)
                     .required(false)
-                    .requires("user")
                     .help("Enable PAM mode")
                     .conflicts_with("create")
-                    .requires("user")   // It requires PAM_USER env variable
                     .requires("zset"),  // PAM must be accompanied by zset dataset
             )
-            .arg(   // PAM_USER evn variable is validated and captured using clap
-                Arg::with_name("user")
-                    .help("Error: PAM_USER environment variable in not set")
-                    .value_name("PAM_USER environment variable")
-                    .takes_value(true)
-                    .required(false)
-                    .env("PAM_USER")
-                    .hide_env_values(true)
-                    .hidden(true),
-            )
+
             .arg(
                 Arg::with_name("create")
                     .short("c")
@@ -128,35 +130,25 @@ impl Sargs {
         let arg = app.get_matches_from_safe(args)?;
 
         // if keyfile arg is entered, then its value will be used
-        // if not, then pass "NULL"
-        // // exceptions should not happen, because the entry is already validated by clap
-        let file = match arg.value_of("keyfile") {
-            Some(s) => s.to_string(),
-            None => "NULL".to_string(),
-        };
+        let file = arg.value_of("keyfile")
+            .map(str::to_string);
 
         // if zset arg is entered, then its value will be used
-        // if not, then pass "NULL"
-        // NOTE: validating dataset is done in zfs.rs module
-        let mut dataset = match arg.value_of("zset") {
-            Some(s) => {
-                let mut s = s.to_string();
-                // remove the trailing '/' from dataset if entered
+        // NOTE: validating dataset is done by zfs module
+        let mut dataset = match arg.value_of("zset")
+            .map(str::to_string) {
+            Some(mut s) => {
                 if s.ends_with("/") {
                     s.pop();
-                }
-                s 
+                };
+                Some(s)
             },
-            None => "NULL".to_string(),
+            None => None,
         };
 
         // The port arguments are <u16> or None (not entered by user)
-        // If None, then 0 is passed back
-        let port: u16 = match arg.value_of("port") {
-            // exceptions should not happen, because the entry is already validated by clap
-            Some(s)   => s.parse::<u16>().expect(UNREACHABLE_CODE), 
-            None  => 0,
-        };
+        let port = arg.value_of("port")
+            .map(|p| p.parse::<u16>().expect(UNREACHABLE_CODE));
 
         // The accepted slot arguments are Some (1 or 2) or None (not entered by user)
         // Default value if not entered is 2
@@ -170,24 +162,42 @@ impl Sargs {
                 // If PAM mode is enabled, then the user name from PAM_USER
                 // environment variable is added to the end of ZFS dataset
                 // before it is mounted.
-                // Clap has already validated PAM_USER existence.
-                dataset.push('/');
-                dataset.push_str(env::var("PAM_USER").expect(UNREACHABLE_CODE).as_str());
-                String::from("pam")
+                let user = match env::var("PAM_USER") {
+                    Ok(u) => u,
+                    Err(e) => {
+                        // FIX for "[bug] Command line parse error #7"
+                        // If PAM mode is selected but PAM_USER env doesn't exists
+                        // then return Err(error message)
+                        let error_message = e.to_string().to_owned();
+                        return Err(
+                            clap::Error::with_description(
+                                &error_message[..], clap::ErrorKind::EmptyValue))
+                        },
+                    };
+                // append the value from "PAM_USER" to the end of dataset, if it exists
+                // otherwise keep None
+                dataset = dataset
+                    .map(|d| {
+                        let mut f = d.clone();
+                        f.push('/');
+                        f.push_str(user.as_str());
+                        f
+                    });
+                Mode::Mount
             } else if arg.is_present("create") {
-                String::from("create")
+                Mode::Create
             } else if arg.is_present("zset") {
-                String::from("mount")
+                Mode::Mount
             } else {
-                String::from("print")
+                Mode::Print
         };
 
         let umode = if arg.is_present("yubikey") {
-                String::from("yubikey")
+                Umode::Yubikey
             } else if arg.is_present("keyfile") {
-                String::from("file")
+                Umode::File
             } else {
-                String::from("password")
+                Umode::Password
         };
 
         Ok(Sargs {
@@ -256,144 +266,144 @@ mod tests {
             ArgResultPair {
                 arg: vec![],    // no argument
                 result: Sargs {
-                    mode: String::from("print"),
-                    port: 0,
-                    file: "NULL".to_string(),
+                    mode: Mode::Print,
+                    port: None,
+                    file: None,
                     yslot: 2,
-                    umode: String::from("password"),
-                    dataset: "NULL".to_string()
+                    umode: Umode::Password,
+                    dataset: None
                 }
             },
             ArgResultPair {
                 arg: vec!["-y"],    // -y
                 result: Sargs {
-                    mode: String::from("print"),
-                    port: 0,
-                    file: "NULL".to_string(),
+                    mode: Mode::Print,
+                    port: None,
+                    file: None,
                     yslot: 2,
-                    umode: String::from("yubikey"),
-                    dataset: "NULL".to_string()
+                    umode: Umode::Yubikey,
+                    dataset: None
                 }
             },
             ArgResultPair {
                 arg: vec!["-y", "-s", "1"], // -y -s 1
                 result: Sargs {
-                    mode: String::from("print"),
-                    port: 0,
-                    file: "NULL".to_string(),
+                    mode: Mode::Print,
+                    port: None,
+                    file: None,
                     yslot: 1,
-                    umode: String::from("yubikey"),
-                    dataset: "NULL".to_string()
+                    umode: Umode::Yubikey,
+                    dataset: None
                 }
             },
             ArgResultPair {
                 arg: vec!["--yubi", "--slot", "2"], // --yubi --slot 2
                 result: Sargs {
-                    mode: String::from("print"),
-                    port: 0,
-                    file: "NULL".to_string(),
+                    mode: Mode::Print,
+                    port: None,
+                    file: None,
                     yslot: 2,
-                    umode: String::from("yubikey"),
-                    dataset: "NULL".to_string()
+                    umode: Umode::Yubikey,
+                    dataset: None
                 }
             },
             ArgResultPair {
                 arg: vec!["--file", "./shavee"],    // --file ./shavee
                 result: Sargs {
-                    mode: String::from("print"),
-                    port: 0,
-                    file: String::from("./shavee"),
+                    mode: Mode::Print,
+                    port: None,
+                    file: Some(String::from("./shavee")),
                     yslot: 2,
-                    umode: String::from("file"),
-                    dataset: "NULL".to_string()
+                    umode: Umode::File,
+                    dataset: None
                 }
             },
             ArgResultPair {
                 arg: vec!["--port", "80", "-f", "./shavee"],    // --port 80 --file ./shavee
                 result: Sargs {
-                    mode: String::from("print"),
-                    port: 80,
-                    file: String::from("./shavee"),
+                    mode: Mode::Print,
+                    port: Some(80),
+                    file: Some(String::from("./shavee")),
                     yslot: 2,
-                    umode: String::from("file"),
-                    dataset: "NULL".to_string()
+                    umode: Umode::File,
+                    dataset: None
                 }
             },
             ArgResultPair {
                 arg: vec!["-P", "443", "-f", "./shavee"],   // -P 443 --file ./shavee
                 result: Sargs {
-                    mode: String::from("print"),
-                    port: 443,
-                    file: String::from("./shavee"),
+                    mode: Mode::Print,
+                    port: Some(443),
+                    file: Some(String::from("./shavee")),
                     yslot: 2,
-                    umode: String::from("file"),
-                    dataset: "NULL".to_string()
+                    umode: Umode::File,
+                    dataset: None
                 }
             },
             ArgResultPair {
                 arg: vec!["-z", "zroot/test"],  // -z zroot/test
                 result: Sargs {
-                    mode: String::from("mount"),
-                    port: 0,
-                    file: "NULL".to_string(),
+                    mode: Mode::Mount,
+                    port: None,
+                    file: None,
                     yslot: 2,
-                    umode: String::from("password"),
-                    dataset: String::from("zroot/test")
+                    umode: Umode::Password,
+                    dataset: Some(String::from("zroot/test"))
                 }
             },
             ArgResultPair {
                 arg: vec!["--pam", "-z", "zroot/test"], // --pam -z zroot/test (and PAM_USER env)
                 result: Sargs {
-                    mode: String::from("pam"),
-                    port: 0,
-                    file: "NULL".to_string(),
+                    mode: Mode::Mount,
+                    port: None,
+                    file: None,
                     yslot: 2,
-                    umode: String::from("password"),
-                    dataset: String::from("zroot/test/shavee")  // Check if PAM_USER is appended.
+                    umode: Umode::Password,
+                    dataset: Some(String::from("zroot/test/shavee"))  // Check if PAM_USER is appended.
                 }
             },
             ArgResultPair {
                 arg: vec!["-p", "-f", "./shavee", "-z", "zroot/test"],// -p -f ./shavee -z zroot/test (and PAM_USER env)
                 result: Sargs {
-                    mode: String::from("pam"),
-                    port: 0,
-                    file: String::from("./shavee"),
+                    mode: Mode::Mount,
+                    port: None,
+                    file: Some(String::from("./shavee")),
                     yslot: 2,
-                    umode: String::from("file"),
-                    dataset: String::from("zroot/test/shavee")  // Check if PAM_USER is appended.
+                    umode: Umode::File,
+                    dataset: Some(String::from("zroot/test/shavee"))  // Check if PAM_USER is appended.
                 }
             },
             ArgResultPair {
                 arg: vec!["-c", "-z", "zroot/test"],    // -c -z zroot/test
                 result: Sargs {
-                    mode: String::from("create"),
-                    port: 0,
-                    file: "NULL".to_string(),
+                    mode: Mode::Create,
+                    port: None,
+                    file: None,
                     yslot: 2,
-                    umode: String::from("password"),
-                    dataset: String::from("zroot/test")
+                    umode: Umode::Password,
+                    dataset: Some(String::from("zroot/test"))
                 }
             },
             ArgResultPair {
                 arg: vec!["--create", "--zset", "zroot/test/"], // --create --zset zroot/test/
                 result: Sargs {
-                    mode: String::from("create"),
-                    port: 0,
-                    file: "NULL".to_string(),
+                    mode: Mode::Create,
+                    port: None,
+                    file: None,
                     yslot: 2,
-                    umode: String::from("password"),
-                    dataset: String::from("zroot/test")
+                    umode: Umode::Password,
+                    dataset: Some(String::from("zroot/test"))
                 }
             },
             ArgResultPair {
                 arg: vec!["-y", "-s", "1", "-c", "-z", "zroot/test/"], // -y -s 1 -c -z zroot/test/
                 result: Sargs {
-                    mode: String::from("create"),
-                    port: 0,
-                    file: "NULL".to_string(),
+                    mode: Mode::Create,
+                    port: None,
+                    file: None,
                     yslot: 1,
-                    umode: String::from("yubikey"),
-                    dataset: String::from("zroot/test")
+                    umode: Umode::Yubikey,
+                    dataset: Some(String::from("zroot/test"))
                 }
             },
         ];
