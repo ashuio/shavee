@@ -70,7 +70,7 @@ fn main() {
             _ => unreachable!(),
         },
         "password" => {
-            let key =  hash_argon2(pass.into_bytes());
+            let key = hash_argon2(pass.into_bytes()).unwrap();
             let key = encode_config(key, base64::STANDARD_NO_PAD);
             match args.mode.as_str() {
                 "print" => println!("{}", key),

@@ -1,17 +1,18 @@
 use curl;
 use sha2::{Digest, Sha512};
 use std::io::{self, BufRead, BufReader};
+use std::error::Error;
 
-pub fn get_filehash(file: String, port: u16) -> Result<Vec<u8>, String> {
+pub fn get_filehash(file: String, port: u16) -> Result<Vec<u8>, Box<dyn Error>> {
     if file.starts_with("https://") || file.starts_with("http://") || file.starts_with("sftp://") {
         match get_filehash_http_sftp(file, port) {
             Ok(v) => Ok(v),
-            Err(e) => Err(e.to_string()),
+            Err(e) => Err(e.into()),
         }
     } else {
         match get_filehash_local(file) {
             Ok(v) => Ok(v),
-            Err(e) => Err(e.to_string()),
+            Err(e) => Err(e.into()),
         }
     }
 }
@@ -434,10 +435,11 @@ mod tests {
                     v,
                     file_hash_result_pairs[index].hash_result.clone().unwrap()
                 ),
-                Err(mut e) => {
+                Err(e) => {
                     // Because of differences in the error message implementation systems
                     // only compare the first few characters
                     let truncate_size = 5;
+                    let mut e= e.to_string();
                     assert_eq!(
                         e.truncate(truncate_size),
                         file_hash_result_pairs[index]
