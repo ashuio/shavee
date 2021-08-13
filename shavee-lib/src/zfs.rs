@@ -1,6 +1,7 @@
 use std::error::Error;
 use std::io::prelude::*;
 use std::process::Command;
+use crate::logic::UNREACHABLE_CODE;
 
 pub fn zfs_loadkey(key: String, dataset: String) -> Result<(), Box<dyn Error>> {
     let zfs = Command::new("zfs") // Call zfs mount
@@ -74,7 +75,9 @@ pub fn zfs_list(dataset: String) -> Result<Vec<String>, Box<dyn Error>> {
     return Ok(dlist);
 }
 
-pub fn zfs_create(key: String, dataset: String) -> Result<(), Box<dyn Error>> {
+pub fn zfs_create(key: String, dataset: Option<String>) -> Result<(), Box<dyn Error>> {
+    let dataset = dataset
+        .expect(UNREACHABLE_CODE);
     let zfs_list = Command::new("zfs")
         .arg("list")
         .arg("-H")
