@@ -3,17 +3,13 @@ use sha2::{Digest, Sha512};
 use std::io::{self, BufRead, BufReader};
 use std::error::Error;
 
-pub fn get_filehash(file: String, port: u16) -> Result<Vec<u8>, Box<dyn Error>> {
+pub fn get_filehash(file: String, port: Option<u16>) -> Result<Vec<u8>, Box<dyn Error>> {
     if file.starts_with("https://") || file.starts_with("http://") || file.starts_with("sftp://") {
-        match get_filehash_http_sftp(file, port) {
-            Ok(v) => Ok(v),
-            Err(e) => Err(e.into()),
-        }
+        get_filehash_http_sftp(file, port)
+            .map_err(|e| e.into())
     } else {
-        match get_filehash_local(file) {
-            Ok(v) => Ok(v),
-            Err(e) => Err(e.into()),
-        }
+        get_filehash_local(file)
+            .map_err(|e| e.into())
     }
 }
 
@@ -37,14 +33,15 @@ fn get_filehash_local(file: String) -> Result<Vec<u8>, io::Error> {
     Ok(hasher.finalize().to_vec())
 }
 
-fn get_filehash_http_sftp(file: String, port: u16) -> Result<Vec<u8>, curl::Error> {
+fn get_filehash_http_sftp(file: String, port: Option<u16>) -> Result<Vec<u8>, curl::Error> {
     let mut rfile = curl::easy::Easy::new();
     let mut filehash = Sha512::new();
     rfile.url(file.as_str()).expect("Invalid URL");
 
-    if port > 0 {
-        rfile.port(port)?;
+    if port.is_some() {
+        rfile.port(port.unwrap())?;
     }
+
     rfile.fail_on_error(true)?;
     {
         let mut transfer = rfile.transfer();
@@ -171,7 +168,7 @@ mod tests {
         #[derive(Debug, PartialEq)]
         struct FilePortHashResultPair {
             file: String,
-            port: u16,
+            port: Option<u16>,
             hash_result: Result<Vec<u8>, curl::Error>,
         }
 
@@ -183,7 +180,7 @@ mod tests {
                 file: String::from(
                     "https://raw.githubusercontent.com/ashuio/shavee/master/LICENSE",
                 ),
-                port: 0,
+                port: None,
                 hash_result: Ok(vec![
                     114, 198, 213, 139, 67, 213, 120, 43, 163, 13, 255, 110, 191, 190, 203, 251,
                     149, 28, 124, 127, 251, 14, 155, 0, 181, 106, 178, 75, 235, 244, 197, 242, 51,
@@ -195,7 +192,7 @@ mod tests {
                 file: String::from(
                     "https://www.w3.org/WAI/ER/tests/xhtml/testfiles/resources/pdf/dummy.pdf",
                 ),
-                port: 443,
+                port: Some(443),
                 hash_result: Ok(vec![
                     243, 179, 171, 62, 99, 81, 226, 91, 92, 24, 130, 190, 168, 211, 126, 250, 221,
                     192, 234, 114, 191, 21, 59, 176, 103, 104, 143, 119, 90, 38, 129, 13, 50, 181,
@@ -207,7 +204,7 @@ mod tests {
                 file: String::from(
                     "http://www.w3.org/WAI/ER/tests/xhtml/testfiles/resources/pdf/dummy.pdf",
                 ),
-                port: 80,
+                port: Some(80),
                 hash_result: Ok(vec![
                     243, 179, 171, 62, 99, 81, 226, 91, 92, 24, 130, 190, 168, 211, 126, 250, 221,
                     192, 234, 114, 191, 21, 59, 176, 103, 104, 143, 119, 90, 38, 129, 13, 50, 181,
@@ -219,26 +216,26 @@ mod tests {
                 file: String::from(
                     "https://raw.githubusercontent.com/ashuio/shavee/master/LICENSEEEE",
                 ), //file doesn't exists
-                port: 0,
+                port: None,
                 hash_result: Err(curl::Error::new(22)), //CURLE_HTTP_RETURNED_ERROR
             },
             FilePortHashResultPair {
                 file: String::from(
                     "https://www.w3.org/WAI/ER/tests/xhtml/testfiles/resources/pdf/dummy.pdf",
                 ),
-                port: 80,                               //Wrong port for SSL
+                port: Some(80),                               //Wrong port for SSL
                 hash_result: Err(curl::Error::new(35)), //CURLE_SSL_CONNECT_ERROR
             },
             FilePortHashResultPair {
                 file: String::from("http://www.w3.ggg"), // host doesn't exists
-                port: 0,
+                port: None,
                 hash_result: Err(curl::Error::new(6)), //CURLE_COULDNT_RESOLVE_HOST
             },
             FilePortHashResultPair {
                 file: String::from(
                     "http://www.w3.org/WAI/ER/tests/xhtml/testfiles/resources/pdf/dummy.pdf",
                 ),
-                port: 23,                               //FTP port used for HTTP
+                port: Some(23),                               //FTP port used for HTTP
                 hash_result: Err(curl::Error::new(28)), //CURLE_HTTP_RETURNED_ERROR
             },
         ];
@@ -314,7 +311,7 @@ mod tests {
                 file: String::from(
                     "https://raw.githubusercontent.com/ashuio/shavee/master/LICENSE",
                 ),
-                port: Some(0),
+                port: None,
                 hash_result: Ok(vec![
                     114, 198, 213, 139, 67, 213, 120, 43, 163, 13, 255, 110, 191, 190, 203, 251,
                     149, 28, 124, 127, 251, 14, 155, 0, 181, 106, 178, 75, 235, 244, 197, 242, 51,
@@ -350,7 +347,7 @@ mod tests {
                 file: String::from(
                     "https://raw.githubusercontent.com/ashuio/shavee/master/LICENSEEEE",
                 ), //file doesn't exists
-                port: Some(0),
+                port: None,
                 hash_result: Err(curl::Error::new(22).to_string()), //CURLE_HTTP_RETURNED_ERROR
             },
             FilePortHashResultPair {
@@ -362,7 +359,7 @@ mod tests {
             },
             FilePortHashResultPair {
                 file: String::from("http://www.w3.ggg"), // host doesn't exists
-                port: Some(0),
+                port: None,
                 hash_result: Err(curl::Error::new(6).to_string()), //CURLE_COULDNT_RESOLVE_HOST
             },
             FilePortHashResultPair {
@@ -422,13 +419,7 @@ mod tests {
                         .unwrap();
             }
             
-
-            // TODO: Once support for Option() implemented for get_filehash(), then remove this match
-            let port = match file_hash_result_pairs[index].port {
-                Some(p) => p,
-                None => 0,
-            };
-
+            let port = file_hash_result_pairs[index].port;
             match get_filehash(file, port)
             {
                 Ok(v) => assert_eq!(
@@ -439,9 +430,8 @@ mod tests {
                     // Because of differences in the error message implementation systems
                     // only compare the first few characters
                     let truncate_size = 5;
-                    let mut e= e.to_string();
                     assert_eq!(
-                        e.truncate(truncate_size),
+                        e.to_string().truncate(truncate_size),
                         file_hash_result_pairs[index]
                             .hash_result
                             .clone()
