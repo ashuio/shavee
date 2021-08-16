@@ -26,7 +26,7 @@ impl PamServiceModule for PamShavee {
             .to_string_lossy()
             .to_string();
 
-        match shavee_lib::logic::unlock_zfs_yubi(pass, dataset, 2) {
+        match shavee_lib::logic::unlock_zfs_yubi(pass, Some(dataset), 2) {
             Ok(_) => return PamError::SUCCESS,
             Err(_) => return PamError::AUTH_ERR,
         }
