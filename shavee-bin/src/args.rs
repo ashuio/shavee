@@ -1,5 +1,3 @@
-const UNREACHABLE_CODE : &str = "Panic! Something unexpected happened! Please help by reporting it as a bug.";
-
 use std::env;
 use std::ffi::OsString;
 use clap::{App, Arg, crate_authors, crate_description, crate_name, crate_version};
@@ -148,13 +146,13 @@ impl Sargs {
 
         // The port arguments are <u16> or None (not entered by user)
         let port = arg.value_of("port")
-            .map(|p| p.parse::<u16>().expect(UNREACHABLE_CODE));
+            .map(|p| p.parse::<u16>().expect(shavee_lib::logic::UNREACHABLE_CODE));
 
         // The accepted slot arguments are Some (1 or 2) or None (not entered by user)
         // Default value if not entered is 2
         let yslot = match arg.value_of("slot") {
             // exceptions should not happen, because the entry is already validated by clap
-            Some(s)   => s.parse::<u8>().expect (UNREACHABLE_CODE), 
+            Some(s)   => s.parse::<u8>().expect (shavee_lib::logic::UNREACHABLE_CODE), 
             None  => 2,
         };
 
