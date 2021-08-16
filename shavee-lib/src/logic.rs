@@ -1,6 +1,5 @@
 pub const UNREACHABLE_CODE : &str = "Panic! Something unexpected happened! Please help by reporting it as a bug.";
 
-use crate::filehash::get_filehash;
 use crate::password::hash_argon2;
 use crate::yubikey::*;
 use crate::zfs::*;
@@ -34,32 +33,28 @@ pub fn create_zfs_yubi(pass: String, zfspath: Option<String>, slot: u8) -> Resul
     Ok(())
 }
 
-fn file_key_calculation(pass: String, file: Option<String>, port: Option<u16>) -> Result<String, Box<dyn Error>> {
-    let file = file
-        .expect(UNREACHABLE_CODE);
+fn file_key_calculation(pass: String, filehash: Vec<u8>) -> Result<String, Box<dyn Error>> {
     let passhash = hash_argon2(pass.into_bytes())?;
-    let filehash = get_filehash(file.clone(), port)?;
     let key = [filehash, passhash].concat();
     let key = hash_argon2(key)?;
     let key = encode_config(key, base64::STANDARD_NO_PAD);
     Ok(key)
 }
 
-pub fn print_mode_file(pass: String, file: Option<String>, port: Option<u16>) -> Result<(),Box<dyn Error>> {
-    let key = file_key_calculation(pass, file, port)?;
+pub fn print_mode_file(pass: String, filehash: Vec<u8>) -> Result<(),Box<dyn Error>> {
+    let key = file_key_calculation(pass, filehash)?;
     println!("{}", key);
     Ok(())
 }
 
 pub fn unlock_zfs_file(
     pass: String,
-    file: Option<String>,
-    dataset: Option<String>,
-    port: Option<u16>
+    filehash: Vec<u8>,
+    dataset: Option<String>
 ) -> Result<(),Box<dyn Error>> {
     let dataset = dataset
         .expect(UNREACHABLE_CODE);
-    let key = file_key_calculation(pass, file, port)?;
+    let key = file_key_calculation(pass, filehash)?;
     zfs_loadkey(key, dataset.clone())?;
     zfs_mount(dataset)?;
     Ok(())
@@ -67,11 +62,10 @@ pub fn unlock_zfs_file(
 
 pub fn create_zfs_file(
     pass: String,
-    file: Option<String>,
-    dataset: Option<String>,
-    port: Option<u16>
+    filehash: Vec<u8>,
+    dataset: Option<String>
 ) -> Result<(), Box<dyn Error>> {
-    let key = file_key_calculation(pass, file, port)?;
+    let key = file_key_calculation(pass, filehash)?;
     zfs_create(key, dataset)?;
     Ok(())
 }
