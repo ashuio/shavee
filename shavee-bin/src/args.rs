@@ -4,26 +4,22 @@ use clap::{App, Arg, crate_authors, crate_description, crate_name, crate_version
 
 #[derive(Debug, PartialEq)]
 pub enum Umode {
-    Yubikey,
-    File,
+    Yubikey { yslot: u8},
+    File { file: String, port: Option<u16>, size: Option<u64> },
     Password,
 }
 
 #[derive(Debug, PartialEq)]
 pub enum Mode {
-    Create,
-    Mount,
+    Create {dataset: String},
+    Mount {dataset: String},
     Print,
 }
 
 #[derive(Debug, PartialEq)]
 pub struct Sargs {
     pub mode: Mode,
-    pub port: Option<u16>,
-    pub file: Option<String>,
-    pub yslot: u8,
     pub umode: Umode,
-    pub dataset: Option<String>,
 }
 
 impl Sargs {
@@ -87,7 +83,6 @@ impl Sargs {
                     .conflicts_with("create")
                     .requires("zset"),  // PAM must be accompanied by zset dataset
             )
-
             .arg(
                 Arg::with_name("create")
                     .short("c")
@@ -146,13 +141,13 @@ impl Sargs {
 
         // The port arguments are <u16> or None (not entered by user)
         let port = arg.value_of("port")
-            .map(|p| p.parse::<u16>().expect(shavee_lib::logic::UNREACHABLE_CODE));
+            .map(|p| p.parse::<u16>().expect(shavee_lib::UNREACHABLE_CODE));
 
         // The accepted slot arguments are Some (1 or 2) or None (not entered by user)
         // Default value if not entered is 2
         let yslot = match arg.value_of("slot") {
             // exceptions should not happen, because the entry is already validated by clap
-            Some(s)   => s.parse::<u8>().expect (shavee_lib::logic::UNREACHABLE_CODE), 
+            Some(s)   => s.parse::<u8>().expect (shavee_lib::UNREACHABLE_CODE), 
             None  => 2,
         };
 
@@ -181,30 +176,30 @@ impl Sargs {
                         f.push_str(user.as_str());
                         f
                     });
-                Mode::Mount
+                let dataset = dataset.expect(shavee_lib::UNREACHABLE_CODE);
+                Mode::Mount{ dataset }
             } else if arg.is_present("create") {
-                Mode::Create
+                let dataset = dataset.expect(shavee_lib::UNREACHABLE_CODE);
+                Mode::Create{ dataset }
             } else if arg.is_present("zset") {
-                Mode::Mount
+                let dataset = dataset.expect(shavee_lib::UNREACHABLE_CODE);
+                Mode::Mount{ dataset }
             } else {
                 Mode::Print
         };
 
         let umode = if arg.is_present("yubikey") {
-                Umode::Yubikey
+                Umode::Yubikey{ yslot }
             } else if arg.is_present("keyfile") {
-                Umode::File
+                let file = file.expect(shavee_lib::UNREACHABLE_CODE);
+                Umode::File{ file, port, size: None }
             } else {
                 Umode::Password
         };
 
         Ok(Sargs {
             mode,
-            port,
-            file,
-            yslot,
             umode,
-            dataset,
         })
     }
 }
@@ -265,143 +260,91 @@ mod tests {
                 arg: vec![],    // no argument
                 result: Sargs {
                     mode: Mode::Print,
-                    port: None,
-                    file: None,
-                    yslot: 2,
                     umode: Umode::Password,
-                    dataset: None
                 }
             },
             ArgResultPair {
                 arg: vec!["-y"],    // -y
                 result: Sargs {
                     mode: Mode::Print,
-                    port: None,
-                    file: None,
-                    yslot: 2,
-                    umode: Umode::Yubikey,
-                    dataset: None
+                    umode: Umode::Yubikey{yslot: 2},
                 }
             },
             ArgResultPair {
                 arg: vec!["-y", "-s", "1"], // -y -s 1
                 result: Sargs {
                     mode: Mode::Print,
-                    port: None,
-                    file: None,
-                    yslot: 1,
-                    umode: Umode::Yubikey,
-                    dataset: None
+                    umode: Umode::Yubikey{yslot: 1},
                 }
             },
             ArgResultPair {
                 arg: vec!["--yubi", "--slot", "2"], // --yubi --slot 2
                 result: Sargs {
                     mode: Mode::Print,
-                    port: None,
-                    file: None,
-                    yslot: 2,
-                    umode: Umode::Yubikey,
-                    dataset: None
+                    umode: Umode::Yubikey{yslot: 2},
                 }
             },
             ArgResultPair {
                 arg: vec!["--file", "./shavee"],    // --file ./shavee
                 result: Sargs {
                     mode: Mode::Print,
-                    port: None,
-                    file: Some(String::from("./shavee")),
-                    yslot: 2,
-                    umode: Umode::File,
-                    dataset: None
+                    umode: Umode::File { file: String::from("./shavee"), port: None, size: None},
                 }
             },
             ArgResultPair {
                 arg: vec!["--port", "80", "-f", "./shavee"],    // --port 80 --file ./shavee
                 result: Sargs {
                     mode: Mode::Print,
-                    port: Some(80),
-                    file: Some(String::from("./shavee")),
-                    yslot: 2,
-                    umode: Umode::File,
-                    dataset: None
+                    umode: Umode::File { file: String::from("./shavee"), port: Some(80), size: None},
                 }
             },
             ArgResultPair {
                 arg: vec!["-P", "443", "-f", "./shavee"],   // -P 443 --file ./shavee
                 result: Sargs {
                     mode: Mode::Print,
-                    port: Some(443),
-                    file: Some(String::from("./shavee")),
-                    yslot: 2,
-                    umode: Umode::File,
-                    dataset: None
+                    umode: Umode::File { file: String::from("./shavee"), port: Some(443), size: None},
                 }
             },
             ArgResultPair {
                 arg: vec!["-z", "zroot/test"],  // -z zroot/test
                 result: Sargs {
-                    mode: Mode::Mount,
-                    port: None,
-                    file: None,
-                    yslot: 2,
+                    mode: Mode::Mount{ dataset: String::from("zroot/test") },
                     umode: Umode::Password,
-                    dataset: Some(String::from("zroot/test"))
                 }
             },
             ArgResultPair {
                 arg: vec!["--pam", "-z", "zroot/test"], // --pam -z zroot/test (and PAM_USER env)
                 result: Sargs {
-                    mode: Mode::Mount,
-                    port: None,
-                    file: None,
-                    yslot: 2,
+                    mode: Mode::Mount{dataset: String::from("zroot/test/shavee")}, // Check if PAM_USER is appended.
                     umode: Umode::Password,
-                    dataset: Some(String::from("zroot/test/shavee"))  // Check if PAM_USER is appended.
                 }
             },
             ArgResultPair {
                 arg: vec!["-p", "-f", "./shavee", "-z", "zroot/test"],// -p -f ./shavee -z zroot/test (and PAM_USER env)
                 result: Sargs {
-                    mode: Mode::Mount,
-                    port: None,
-                    file: Some(String::from("./shavee")),
-                    yslot: 2,
-                    umode: Umode::File,
-                    dataset: Some(String::from("zroot/test/shavee"))  // Check if PAM_USER is appended.
+                    mode: Mode::Mount{dataset: String::from("zroot/test/shavee")}, // Check if PAM_USER is appended.
+                    umode: Umode::File{ file: String::from("./shavee"), port: None, size: None},
                 }
             },
             ArgResultPair {
                 arg: vec!["-c", "-z", "zroot/test"],    // -c -z zroot/test
                 result: Sargs {
-                    mode: Mode::Create,
-                    port: None,
-                    file: None,
-                    yslot: 2,
+                    mode: Mode::Create{ dataset: String::from("zroot/test")},
                     umode: Umode::Password,
-                    dataset: Some(String::from("zroot/test"))
                 }
             },
             ArgResultPair {
                 arg: vec!["--create", "--zset", "zroot/test/"], // --create --zset zroot/test/
                 result: Sargs {
-                    mode: Mode::Create,
-                    port: None,
-                    file: None,
-                    yslot: 2,
+                    mode: Mode::Create{ dataset: String::from("zroot/test")},
                     umode: Umode::Password,
-                    dataset: Some(String::from("zroot/test"))
                 }
             },
             ArgResultPair {
                 arg: vec!["-y", "-s", "1", "-c", "-z", "zroot/test/"], // -y -s 1 -c -z zroot/test/
                 result: Sargs {
-                    mode: Mode::Create,
-                    port: None,
-                    file: None,
-                    yslot: 1,
-                    umode: Umode::Yubikey,
-                    dataset: Some(String::from("zroot/test"))
+                    mode: Mode::Create{ dataset: String::from("zroot/test")},
+                    umode: Umode::Yubikey{ yslot: 1 },
                 }
             },
         ];
