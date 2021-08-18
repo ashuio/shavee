@@ -33,19 +33,17 @@ fn run(args: Sargs) -> Result<(), Box<dyn Error>> {
     // if multithread file hash code called then handle must not be used
     // thus initializing it with an error message.
     let mut handle: thread::JoinHandle<Result<Vec<u8>, String>> =
-        thread::spawn(|| Err(String::from(shavee_lib::logic::UNREACHABLE_CODE)) );
+        thread::spawn(|| Err(String::from(shavee_lib::UNREACHABLE_CODE)) );
     let mut filehash : Vec<u8> = vec![]; //empty u8 vector
     
     // if in the file 2FA mode, then generate file hash in parallel
     // while user is entering password
-    if args.umode == Umode::File {
-        let file = args.file.clone()
-                .expect(shavee_lib::logic::UNREACHABLE_CODE);
-        let port = args.port.clone();
-
+    if let Umode::File{ ref file, ref port, size } = args.umode {
+        let port = port.clone();
+        let file = file.clone();
         // start the file hash thread
         handle = thread::spawn(move || {
-                get_filehash(file, port)
+                get_filehash(file, port, size)
                     .map_err(|e| e.to_string()) // map error to String
             });
     };
@@ -58,29 +56,29 @@ fn run(args: Sargs) -> Result<(), Box<dyn Error>> {
     // if in the file 2FA mode, then wait for hash generation thread to finish 
     // and unwrap the result. In case of error, terminate this function and
     // return error to the calling function.
-    if args.umode == Umode::File {
+    if let Umode::File{..} = args.umode {
         filehash = handle.join()
             .unwrap()?;
     };
 
     Ok(match args.umode {
-        Umode::Yubikey => match args.mode {
-            Mode::Print => print_mode_yubi(pass, args.yslot)?,
-            Mode::Mount => unlock_zfs_yubi(pass, args.dataset, args.yslot)?,
-            Mode::Create => create_zfs_yubi(pass, args.dataset, args.yslot)?,
+        Umode::Yubikey{yslot} => match args.mode {
+            Mode::Print => print_mode_yubi(pass, yslot)?,
+            Mode::Mount{dataset} => unlock_zfs_yubi(pass, Some(dataset), yslot)?,
+            Mode::Create{dataset} => create_zfs_yubi(pass, Some(dataset), yslot)?,
         },
-        Umode::File => match args.mode {
+        Umode::File{..} => match args.mode {
             Mode::Print => print_mode_file(pass, filehash)?,
-            Mode::Mount => unlock_zfs_file(pass, filehash, args.dataset)?,
-            Mode::Create => create_zfs_file(pass, filehash, args.dataset)?,
+            Mode::Mount{dataset} => unlock_zfs_file(pass, filehash, Some(dataset))?,
+            Mode::Create{dataset} => create_zfs_file(pass, filehash, Some(dataset))?,
         },
         Umode::Password => {
             let key =  hash_argon2(pass.into_bytes())?;
             let key = encode_config(key, base64::STANDARD_NO_PAD);
             match args.mode {
                 Mode::Print => println!("{}", key),
-                Mode::Mount => unlock_zfs_pass(key, args.dataset)?,
-                Mode::Create => zfs_create(key, args.dataset)?,
+                Mode::Mount{dataset} => unlock_zfs_pass(key, Some(dataset))?,
+                Mode::Create{dataset} => zfs_create(key, Some(dataset))?,
             }
         }
     })
