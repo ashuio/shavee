@@ -1,5 +1,3 @@
-pub const UNREACHABLE_CODE : &str = "Panic! Something unexpected happened! Please help by reporting it as a bug.";
-
 use crate::password::hash_argon2;
 use crate::yubikey::*;
 use crate::zfs::*;
@@ -19,7 +17,7 @@ pub fn print_mode_yubi(pass: String, slot: u8) -> Result<(), Box<dyn Error>> {
 
 pub fn unlock_zfs_yubi(pass: String, dataset: Option<String>, slot: u8) -> Result<(), Box<dyn Error>> {
     let dataset = dataset
-        .expect(UNREACHABLE_CODE);
+        .expect(crate::UNREACHABLE_CODE);
 
     let key = yubi_key_calculation(pass, slot)?;
     zfs_loadkey(key, dataset.clone())?;
@@ -53,7 +51,7 @@ pub fn unlock_zfs_file(
     dataset: Option<String>
 ) -> Result<(),Box<dyn Error>> {
     let dataset = dataset
-        .expect(UNREACHABLE_CODE);
+        .expect(crate::UNREACHABLE_CODE);
     let key = file_key_calculation(pass, filehash)?;
     zfs_loadkey(key, dataset.clone())?;
     zfs_mount(dataset)?;
@@ -73,7 +71,7 @@ pub fn create_zfs_file(
 
 pub fn unlock_zfs_pass(key: String, dataset: Option<String>) -> Result<(), Box<dyn Error>> {
     let dataset = dataset
-        .expect(UNREACHABLE_CODE);
+        .expect(crate::UNREACHABLE_CODE);
     match zfs_list(dataset.clone()) {
         Ok(i) => {
             zfs_loadkey(key, dataset)?;
