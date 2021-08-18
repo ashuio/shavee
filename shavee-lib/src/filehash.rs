@@ -3,17 +3,17 @@ use sha2::{Digest, Sha512};
 use std::io::{self, BufRead, BufReader};
 use std::error::Error;
 
-pub fn get_filehash(file: String, port: Option<u16>) -> Result<Vec<u8>, Box<dyn Error>> {
+pub fn get_filehash(file: String, port: Option<u16>, size: Option<u64>) -> Result<Vec<u8>, Box<dyn Error>> {
     if file.starts_with("https://") || file.starts_with("http://") || file.starts_with("sftp://") {
-        get_filehash_http_sftp(file, port)
+        get_filehash_http_sftp(file, port, size)
             .map_err(|e| e.into())
     } else {
-        get_filehash_local(file)
+        get_filehash_local(file, size)
             .map_err(|e| e.into())
     }
 }
 
-fn get_filehash_local(file: String) -> Result<Vec<u8>, io::Error> {
+fn get_filehash_local(file: String, _size: Option<u64>) -> Result<Vec<u8>, io::Error> {
     let inner_file = std::fs::File::open(&file)?;
 
     let cap: usize = 131072 * 128;
@@ -33,7 +33,7 @@ fn get_filehash_local(file: String) -> Result<Vec<u8>, io::Error> {
     Ok(hasher.finalize().to_vec())
 }
 
-fn get_filehash_http_sftp(file: String, port: Option<u16>) -> Result<Vec<u8>, curl::Error> {
+fn get_filehash_http_sftp(file: String, port: Option<u16>, _size: Option<u64>) -> Result<Vec<u8>, curl::Error> {
     let mut rfile = curl::easy::Easy::new();
     let mut filehash = Sha512::new();
     rfile.url(file.as_str()).expect("Invalid URL");
@@ -143,7 +143,7 @@ mod tests {
             let mut file = temp_folder.clone();
             file.push(file_hash_result_pairs[index].file.clone());
 
-            match get_filehash_local(file.into_os_string().into_string().unwrap())
+            match get_filehash_local(file.into_os_string().into_string().unwrap(), None)
                 .map_err(|e| e.kind())
             {
                 Ok(v) => assert_eq!(
@@ -244,7 +244,7 @@ mod tests {
             let file = file_hash_result_pairs[index].file.clone();
             let port = file_hash_result_pairs[index].port;
 
-            match get_filehash_http_sftp(file, port) {
+            match get_filehash_http_sftp(file, port, None) {
                 Ok(v) => assert_eq!(
                     v,
                     file_hash_result_pairs[index].hash_result.clone().unwrap()
@@ -420,7 +420,7 @@ mod tests {
             }
             
             let port = file_hash_result_pairs[index].port;
-            match get_filehash(file, port)
+            match get_filehash(file, port, None)
             {
                 Ok(v) => assert_eq!(
                     v,
