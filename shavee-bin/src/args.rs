@@ -67,10 +67,13 @@ impl Sargs {
                 Arg::with_name("keyfile")
                     .short("f")
                     .long("file")
-                    .help("Use any file as second factor, takes filepath, SFTP or a HTTP(S) location as an argument")
+                    .help("Use any file as second factor, takes filepath, SFTP or a HTTP(S) location as an argument. \
+                    If SIZE is entered, the first SIZE in bytes will be used to generate hash. It must be number between \
+                    1 and 2^(64).")
                     .required(false)
                     .takes_value(true)
-                    .value_name("FILE or ADDRESS")
+                    .value_name("FILE|ADDRESS [SIZE]")
+                    .max_values(2)
                     .conflicts_with("yubikey"), // keyfile xor yubikey, not both.
             )
             .arg(
@@ -122,9 +125,12 @@ impl Sargs {
         // shouldn't cause new_from() to exit or panic.
         let arg = app.get_matches_from_safe(args)?;
 
-        // if keyfile arg is entered, then its value will be used
-        let file = arg.value_of("keyfile")
-            .map(str::to_string);
+        // check for keyfile argument if parse them if needed.
+        // otherwise fill them with None
+        let (file, size) = match arg.values_of("keyfile") {
+            Some(value) => parse_file_size_arguments(value)?,
+            None => (None, None),
+        };
 
         // if zset arg is entered, then its value will be used
         // NOTE: validating dataset is done by zfs module
@@ -192,7 +198,7 @@ impl Sargs {
                 Umode::Yubikey{ yslot }
             } else if arg.is_present("keyfile") {
                 let file = file.expect(shavee_lib::UNREACHABLE_CODE);
-                Umode::File{ file, port, size: None }
+                Umode::File{ file, port, size }
             } else {
                 Umode::Password
         };
@@ -204,11 +210,44 @@ impl Sargs {
     }
 }
 
+// TODO: Write unit test
+fn parse_file_size_arguments(values: clap::Values) -> Result<(Option<String>,Option<u64>), clap::Error> {
+    // initiate size to None. If user entered SIZE arg value, then will fill it with Some()
+    let mut size = None;
+
+    // convert the values to a vector
+    let file_size_argument: Vec<_> = values.collect();
+
+    // first [0] value is the file name
+    // it is a required field for "--file" and its existence already checked by clap
+    let file = Some(file_size_argument[0].to_string());
+
+    // if "--file" has two entries, then 2nd [1] is size
+    if file_size_argument.len() == 2 {
+        let second_entry = file_size_argument[1];
+
+        // however the size entry needs to be validated and return error if it is not a u64 value
+        let size_check = match second_entry.parse::<u64>() {
+            Err(_) => {
+                let error_message = format!(r#""{}" is not valid for SIZE argument."#, second_entry);
+                return Err(clap::Error::with_description(&error_message[..], clap::ErrorKind::InvalidValue)
+                )},
+            Ok(u) => u,
+        };
+
+        // wrap the parsed entry with Some()
+        size = Some(size_check);
+    }
+
+    Ok((file, size))
+}
+
 fn port_check(v: String) -> Result<(), String> {
     if v.parse::<u16>().is_ok() && v.parse::<u16>().unwrap() != 0 {
         return Ok(());
     } else {
-        return Err(String::from("Error: Invalid port"));
+        let error_message = format!(r#""{}" is an invalid port number!"#, v);
+        return Err(error_message);
     }
 }
 
@@ -282,6 +321,20 @@ mod tests {
                 result: Sargs {
                     mode: Mode::Print,
                     umode: Umode::Yubikey{yslot: 2},
+                }
+            },
+            ArgResultPair { // test entry for size argument
+                arg: vec!["--file", "./shavee", "2048"],    // --file ./shavee 2048
+                result: Sargs {
+                    mode: Mode::Print,
+                    umode: Umode::File { file: String::from("./shavee"), port: None, size: Some(2048)},
+                }
+            },
+            ArgResultPair { // test entry for size argument
+                arg: vec!["--port", "80", "-f", "./shavee", "4096"],    // --port 80 --file ./shavee 4096
+                result: Sargs {
+                    mode: Mode::Print,
+                    umode: Umode::File { file: String::from("./shavee"), port: Some(80), size: Some(4096)},
                 }
             },
             ArgResultPair {
