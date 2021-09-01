@@ -77,16 +77,6 @@ impl Sargs {
                     .conflicts_with("yubikey"), // keyfile xor yubikey, not both.
             )
             .arg(
-                Arg::with_name("pam")
-                    .short("p")
-                    .long("pam")
-                    .takes_value(false)
-                    .required(false)
-                    .help("Enable PAM mode")
-                    .conflicts_with("create")
-                    .requires("zset"),  // PAM must be accompanied by zset dataset
-            )
-            .arg(
                 Arg::with_name("create")
                     .short("c")
                     .long("create")
@@ -134,7 +124,7 @@ impl Sargs {
 
         // if zset arg is entered, then its value will be used
         // NOTE: validating dataset is done by zfs module
-        let mut dataset = match arg.value_of("zset")
+        let dataset = match arg.value_of("zset")
             .map(str::to_string) {
             Some(mut s) => {
                 if s.ends_with("/") {
@@ -157,34 +147,7 @@ impl Sargs {
             None  => 2,
         };
 
-        let mode = if arg.is_present("pam") {
-                // If PAM mode is enabled, then the user name from PAM_USER
-                // environment variable is added to the end of ZFS dataset
-                // before it is mounted.
-                let user = match env::var("PAM_USER") {
-                    Ok(u) => u,
-                    Err(e) => {
-                        // FIX for "[bug] Command line parse error #7"
-                        // If PAM mode is selected but PAM_USER env doesn't exists
-                        // then return Err(error message)
-                        let error_message = e.to_string().to_owned();
-                        return Err(
-                            clap::Error::with_description(
-                                &error_message[..], clap::ErrorKind::EmptyValue))
-                        },
-                    };
-                // append the value from "PAM_USER" to the end of dataset, if it exists
-                // otherwise keep None
-                dataset = dataset
-                    .map(|d| {
-                        let mut f = d.clone();
-                        f.push('/');
-                        f.push_str(user.as_str());
-                        f
-                    });
-                let dataset = dataset.expect(shavee_lib::UNREACHABLE_CODE);
-                Mode::Mount{ dataset }
-            } else if arg.is_present("create") {
+        let mode = if arg.is_present("create") {
                 let dataset = dataset.expect(shavee_lib::UNREACHABLE_CODE);
                 Mode::Create{ dataset }
             } else if arg.is_present("zset") {
@@ -290,8 +253,6 @@ mod tests {
             result: Sargs,
         }
 
-        // Set environment variable for PAM unit test
-        env::set_var("PAM_USER", "shavee");
 
         // each entry of the array holds the input/output struct
         let valid_arguments_results_pairs = [
@@ -366,16 +327,16 @@ mod tests {
                 }
             },
             ArgResultPair {
-                arg: vec!["--pam", "-z", "zroot/test"], // --pam -z zroot/test (and PAM_USER env)
+                arg: vec!["-z", "zroot/test"], // --pam -z zroot/test (and PAM_USER env)
                 result: Sargs {
-                    mode: Mode::Mount{dataset: String::from("zroot/test/shavee")}, // Check if PAM_USER is appended.
+                    mode: Mode::Mount{dataset: String::from("zroot/test")}, // Check if PAM_USER is appended.
                     umode: Umode::Password,
                 }
             },
             ArgResultPair {
-                arg: vec!["-p", "-f", "./shavee", "-z", "zroot/test"],// -p -f ./shavee -z zroot/test (and PAM_USER env)
+                arg: vec!["-f", "./shavee", "-z", "zroot/test"],// -p -f ./shavee -z zroot/test (and PAM_USER env)
                 result: Sargs {
-                    mode: Mode::Mount{dataset: String::from("zroot/test/shavee")}, // Check if PAM_USER is appended.
+                    mode: Mode::Mount{dataset: String::from("zroot/test")}, // Check if PAM_USER is appended.
                     umode: Umode::File{ file: String::from("./shavee"), port: None, size: None},
                 }
             },
@@ -413,7 +374,7 @@ mod tests {
         }
 
         // For the invalid arguments, there is no output struct and we only check for error
-        env::remove_var("PAM_USER");   // assure lack of PAM_USER env causes failure
+
         let invalid_arguments = [
             vec!["-s"],                          // -s
             vec!["--slot"],                      // --slot

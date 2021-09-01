@@ -34,7 +34,11 @@ pub fn zfs_loadkey(key: String, dataset: String) -> Result<(), Box<dyn Error>> {
             if res.success() {
                 return Ok(());
             } else {
-                return Err("Failed to mount dataset".to_string().into());
+
+                let mut e: Vec<u8> = Vec::new();
+                zfs.stderr.unwrap().read_to_end(&mut e).unwrap();
+                let error = String::from_utf8_lossy(&e);
+                return Err(error.into());
             }
         }
         Err(error) => return Err(error.into()),
