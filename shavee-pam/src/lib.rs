@@ -1,15 +1,25 @@
+mod args;
+
 #[macro_use]
 extern crate pamsm;
 
+use base64::encode_config;
 use pamsm::{Pam, PamError, PamFlags, PamLibExt, PamServiceModule};
-use shavee_lib::zfs::*;
+use shavee_lib::{
+    filehash::get_filehash,
+    logic::{unlock_zfs_file, unlock_zfs_pass, unlock_zfs_yubi},
+    password::hash_argon2,
+    zfs::*,
+};
 struct PamShavee;
 
 impl PamServiceModule for PamShavee {
-    fn authenticate(pam: Pam, _: PamFlags, _: Vec<String>) -> PamError {
-        let mut dataset = String::from("zroot/data/home/");
-        let p = Some("Username: ");
-        let user = pam.get_user(p);
+    fn authenticate(pam: Pam, _: PamFlags, args: Vec<String>) -> PamError {
+        let mut clap_args: Vec<String> = Vec::new();
+        clap_args.push("shavee".to_string());
+        clap_args.extend(args);
+        let state = args::Pargs::new_from(clap_args.into_iter()).unwrap(); // Parse Args
+        let user = pam.get_user(Some("Username: "));
         let user = match user {
             Ok(i) => i,
             _ => return PamError::USER_UNKNOWN,
@@ -18,7 +28,10 @@ impl PamServiceModule for PamShavee {
             Some(i) => i.to_str().unwrap(),
             _ => return PamError::USER_UNKNOWN,
         };
-        dataset.push_str(user);
+        let mut dataset = state.dataset;
+        dataset.push('/');
+        dataset.push_str(user); // Push Username to dataset
+
         let pass = pam
             .get_authtok(Some("Dataset Password: "))
             .unwrap()
@@ -26,9 +39,41 @@ impl PamServiceModule for PamShavee {
             .to_string_lossy()
             .to_string();
 
-        match shavee_lib::logic::unlock_zfs_yubi(pass, Some(dataset), 2) {
-            Ok(_) => return PamError::SUCCESS,
-            Err(_) => return PamError::AUTH_ERR,
+        match state.mode {
+            args::Mode::Yubikey { yslot } => match unlock_zfs_yubi(pass, Some(dataset), yslot) {
+                Ok(_) => return PamError::SUCCESS,
+                Err(e) => {
+                    eprintln!("Error: {}", e.to_string());
+                    return PamError::AUTH_ERR;
+                }
+            },
+            args::Mode::File { file, port, size } => {
+                let filehash = match get_filehash(file, port, size) {
+                    Ok(e) => e,
+                    Err(e) => {
+                        eprintln!("Error: {}", e.to_string());
+                        return PamError::AUTHINFO_UNAVAIL;
+                    }
+                };
+                match unlock_zfs_file(pass, filehash, Some(dataset)) {
+                    Ok(_) => return PamError::SUCCESS,
+                    Err(e) => {
+                        eprintln!("Error: {}", e.to_string());
+                        return PamError::AUTH_ERR;
+                    }
+                }
+            }
+            args::Mode::Password => {
+                let key = hash_argon2(pass.into_bytes()).unwrap();
+                let key = encode_config(key, base64::STANDARD_NO_PAD);
+                match unlock_zfs_pass(key, Some(dataset)) {
+                    Ok(_) => return PamError::SUCCESS,
+                    Err(e) => {
+                        eprintln!("Error: {}", e.to_string());
+                        return PamError::AUTH_ERR;
+                    }
+                }
+            }
         }
     }
 
