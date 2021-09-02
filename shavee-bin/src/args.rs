@@ -1,18 +1,24 @@
+use clap::{crate_authors, crate_description, crate_name, crate_version, App, Arg};
 use std::env;
 use std::ffi::OsString;
-use clap::{App, Arg, crate_authors, crate_description, crate_name, crate_version};
 
 #[derive(Debug, PartialEq)]
 pub enum Umode {
-    Yubikey { yslot: u8},
-    File { file: String, port: Option<u16>, size: Option<u64> },
+    Yubikey {
+        yslot: u8,
+    },
+    File {
+        file: String,
+        port: Option<u16>,
+        size: Option<u64>,
+    },
     Password,
 }
 
 #[derive(Debug, PartialEq)]
 pub enum Mode {
-    Create {dataset: String},
-    Mount {dataset: String},
+    Create { dataset: String },
+    Mount { dataset: String },
     Print,
 }
 
@@ -23,16 +29,15 @@ pub struct Sargs {
 }
 
 impl Sargs {
-
     // new() function calls new_from() to parse the arguments
     // using this method, it is possible to write unit tests for
     // valid and invalid arguments
     // Read more at:
-    // "Command line parsing with clap" https://www.fpcomplete.com/rust/command-line-parsing-clap/ 
+    // "Command line parsing with clap" https://www.fpcomplete.com/rust/command-line-parsing-clap/
     pub fn new() -> Self {
         Self::new_from(std::env::args_os().into_iter()).unwrap_or_else(|e| e.exit())
     }
-    
+
     // new_from() function parses and validates the inputs
     fn new_from<I, T>(args: I) -> Result<Self, clap::Error>
     where
@@ -107,10 +112,9 @@ impl Sargs {
                     .next_line_help(true)   // long help description will be printed in the next line
                     .help("ZFS Dataset eg. \"zroot/data/home\"\n\
                     If present in conjunction with any of the other options, it will try to unlock and mount the \
-                    given dataset with the derived key instead of printing it. Takes zfs dataset path as argument. \
-                    It will automatically append username in PAM mode."),
+                    given dataset with the derived key instead of printing it. Takes zfs dataset path as argument."),
             );
-        
+
         // in order to be able to write unit tests, getting the arg matches
         // shouldn't cause new_from() to exit or panic.
         let arg = app.get_matches_from_safe(args)?;
@@ -124,57 +128,56 @@ impl Sargs {
 
         // if zset arg is entered, then its value will be used
         // NOTE: validating dataset is done by zfs module
-        let dataset = match arg.value_of("zset")
-            .map(str::to_string) {
+        let dataset = match arg.value_of("zset").map(str::to_string) {
             Some(mut s) => {
                 if s.ends_with("/") {
                     s.pop();
                 };
                 Some(s)
-            },
+            }
             None => None,
         };
 
         // The port arguments are <u16> or None (not entered by user)
-        let port = arg.value_of("port")
+        let port = arg
+            .value_of("port")
             .map(|p| p.parse::<u16>().expect(shavee_lib::UNREACHABLE_CODE));
 
         // The accepted slot arguments are Some (1 or 2) or None (not entered by user)
         // Default value if not entered is 2
         let yslot = match arg.value_of("slot") {
             // exceptions should not happen, because the entry is already validated by clap
-            Some(s)   => s.parse::<u8>().expect (shavee_lib::UNREACHABLE_CODE), 
-            None  => 2,
+            Some(s) => s.parse::<u8>().expect(shavee_lib::UNREACHABLE_CODE),
+            None => 2,
         };
 
         let mode = if arg.is_present("create") {
-                let dataset = dataset.expect(shavee_lib::UNREACHABLE_CODE);
-                Mode::Create{ dataset }
-            } else if arg.is_present("zset") {
-                let dataset = dataset.expect(shavee_lib::UNREACHABLE_CODE);
-                Mode::Mount{ dataset }
-            } else {
-                Mode::Print
+            let dataset = dataset.expect(shavee_lib::UNREACHABLE_CODE);
+            Mode::Create { dataset }
+        } else if arg.is_present("zset") {
+            let dataset = dataset.expect(shavee_lib::UNREACHABLE_CODE);
+            Mode::Mount { dataset }
+        } else {
+            Mode::Print
         };
 
         let umode = if arg.is_present("yubikey") {
-                Umode::Yubikey{ yslot }
-            } else if arg.is_present("keyfile") {
-                let file = file.expect(shavee_lib::UNREACHABLE_CODE);
-                Umode::File{ file, port, size }
-            } else {
-                Umode::Password
+            Umode::Yubikey { yslot }
+        } else if arg.is_present("keyfile") {
+            let file = file.expect(shavee_lib::UNREACHABLE_CODE);
+            Umode::File { file, port, size }
+        } else {
+            Umode::Password
         };
 
-        Ok(Sargs {
-            mode,
-            umode,
-        })
+        Ok(Sargs { mode, umode })
     }
 }
 
 // TODO: Write unit test
-fn parse_file_size_arguments(values: clap::Values) -> Result<(Option<String>,Option<u64>), clap::Error> {
+fn parse_file_size_arguments(
+    values: clap::Values,
+) -> Result<(Option<String>, Option<u64>), clap::Error> {
     // initiate size to None. If user entered SIZE arg value, then will fill it with Some()
     let mut size = None;
 
@@ -192,9 +195,13 @@ fn parse_file_size_arguments(values: clap::Values) -> Result<(Option<String>,Opt
         // however the size entry needs to be validated and return error if it is not a u64 value
         let size_check = match second_entry.parse::<u64>() {
             Err(_) => {
-                let error_message = format!(r#""{}" is not valid for SIZE argument."#, second_entry);
-                return Err(clap::Error::with_description(&error_message[..], clap::ErrorKind::InvalidValue)
-                )},
+                let error_message =
+                    format!(r#""{}" is not valid for SIZE argument."#, second_entry);
+                return Err(clap::Error::with_description(
+                    &error_message[..],
+                    clap::ErrorKind::InvalidValue,
+                ));
+            }
             Ok(u) => u,
         };
 
@@ -227,139 +234,169 @@ mod tests {
         let valid_ports = ["1", "80", "65535"];
         for valid_port in valid_ports {
             match port_check(valid_port.to_string()) {
-                Err(_) => panic!("The port number {} should have been accepted!",valid_port),
+                Err(_) => panic!("The port number {} should have been accepted!", valid_port),
                 Ok(()) => continue,
-           }
+            }
         }
 
         //Few examples of invalid ports. Important to have the boundary values tested.
-	    //Port 0 is reserved by IANA, it is technically invalid to use.
+        //Port 0 is reserved by IANA, it is technically invalid to use.
         let invalid_ports = ["-1", "65536", "a", "0"];
         for invalid_port in invalid_ports {
             match port_check(invalid_port.to_string()) {
-                Ok(()) => panic!("The port number {} should not have been accepted!",invalid_port),
+                Ok(()) => panic!(
+                    "The port number {} should not have been accepted!",
+                    invalid_port
+                ),
                 Err(_) => continue,
-           }
+            }
         }
     }
-    
+
     #[test]
     fn input_args_check() {
-
-        // defining a struct that will hold intput arguments 
+        // defining a struct that will hold intput arguments
         // and their output result
         struct ArgResultPair<'a> {
             arg: Vec<&'a str>,
             result: Sargs,
         }
 
-
         // each entry of the array holds the input/output struct
         let valid_arguments_results_pairs = [
             ArgResultPair {
-                arg: vec![],    // no argument
+                arg: vec![], // no argument
                 result: Sargs {
                     mode: Mode::Print,
                     umode: Umode::Password,
-                }
+                },
             },
             ArgResultPair {
-                arg: vec!["-y"],    // -y
+                arg: vec!["-y"], // -y
                 result: Sargs {
                     mode: Mode::Print,
-                    umode: Umode::Yubikey{yslot: 2},
-                }
+                    umode: Umode::Yubikey { yslot: 2 },
+                },
             },
             ArgResultPair {
                 arg: vec!["-y", "-s", "1"], // -y -s 1
                 result: Sargs {
                     mode: Mode::Print,
-                    umode: Umode::Yubikey{yslot: 1},
-                }
+                    umode: Umode::Yubikey { yslot: 1 },
+                },
             },
             ArgResultPair {
                 arg: vec!["--yubi", "--slot", "2"], // --yubi --slot 2
                 result: Sargs {
                     mode: Mode::Print,
-                    umode: Umode::Yubikey{yslot: 2},
-                }
-            },
-            ArgResultPair { // test entry for size argument
-                arg: vec!["--file", "./shavee", "2048"],    // --file ./shavee 2048
-                result: Sargs {
-                    mode: Mode::Print,
-                    umode: Umode::File { file: String::from("./shavee"), port: None, size: Some(2048)},
-                }
-            },
-            ArgResultPair { // test entry for size argument
-                arg: vec!["--port", "80", "-f", "./shavee", "4096"],    // --port 80 --file ./shavee 4096
-                result: Sargs {
-                    mode: Mode::Print,
-                    umode: Umode::File { file: String::from("./shavee"), port: Some(80), size: Some(4096)},
-                }
+                    umode: Umode::Yubikey { yslot: 2 },
+                },
             },
             ArgResultPair {
-                arg: vec!["--file", "./shavee"],    // --file ./shavee
+                // test entry for size argument
+                arg: vec!["--file", "./shavee", "2048"], // --file ./shavee 2048
                 result: Sargs {
                     mode: Mode::Print,
-                    umode: Umode::File { file: String::from("./shavee"), port: None, size: None},
-                }
+                    umode: Umode::File {
+                        file: String::from("./shavee"),
+                        port: None,
+                        size: Some(2048),
+                    },
+                },
             },
             ArgResultPair {
-                arg: vec!["--port", "80", "-f", "./shavee"],    // --port 80 --file ./shavee
+                // test entry for size argument
+                arg: vec!["--port", "80", "-f", "./shavee", "4096"], // --port 80 --file ./shavee 4096
                 result: Sargs {
                     mode: Mode::Print,
-                    umode: Umode::File { file: String::from("./shavee"), port: Some(80), size: None},
-                }
+                    umode: Umode::File {
+                        file: String::from("./shavee"),
+                        port: Some(80),
+                        size: Some(4096),
+                    },
+                },
             },
             ArgResultPair {
-                arg: vec!["-P", "443", "-f", "./shavee"],   // -P 443 --file ./shavee
+                arg: vec!["--file", "./shavee"], // --file ./shavee
                 result: Sargs {
                     mode: Mode::Print,
-                    umode: Umode::File { file: String::from("./shavee"), port: Some(443), size: None},
-                }
+                    umode: Umode::File {
+                        file: String::from("./shavee"),
+                        port: None,
+                        size: None,
+                    },
+                },
             },
             ArgResultPair {
-                arg: vec!["-z", "zroot/test"],  // -z zroot/test
+                arg: vec!["--port", "80", "-f", "./shavee"], // --port 80 --file ./shavee
                 result: Sargs {
-                    mode: Mode::Mount{ dataset: String::from("zroot/test") },
+                    mode: Mode::Print,
+                    umode: Umode::File {
+                        file: String::from("./shavee"),
+                        port: Some(80),
+                        size: None,
+                    },
+                },
+            },
+            ArgResultPair {
+                arg: vec!["-P", "443", "-f", "./shavee"], // -P 443 --file ./shavee
+                result: Sargs {
+                    mode: Mode::Print,
+                    umode: Umode::File {
+                        file: String::from("./shavee"),
+                        port: Some(443),
+                        size: None,
+                    },
+                },
+            },
+            ArgResultPair {
+                arg: vec!["-z", "zroot/test"], // -z zroot/test
+                result: Sargs {
+                    mode: Mode::Mount {
+                        dataset: String::from("zroot/test"),
+                    },
                     umode: Umode::Password,
-                }
+                },
             },
             ArgResultPair {
-                arg: vec!["-z", "zroot/test"], // --pam -z zroot/test (and PAM_USER env)
+                arg: vec!["-f", "./shavee", "-z", "zroot/test"], // -f ./shavee -z zroot/test
                 result: Sargs {
-                    mode: Mode::Mount{dataset: String::from("zroot/test")}, // Check if PAM_USER is appended.
+                    mode: Mode::Mount {
+                        dataset: String::from("zroot/test"),
+                    },
+                    umode: Umode::File {
+                        file: String::from("./shavee"),
+                        port: None,
+                        size: None,
+                    },
+                },
+            },
+            ArgResultPair {
+                arg: vec!["-c", "-z", "zroot/test"], // -c -z zroot/test
+                result: Sargs {
+                    mode: Mode::Create {
+                        dataset: String::from("zroot/test"),
+                    },
                     umode: Umode::Password,
-                }
-            },
-            ArgResultPair {
-                arg: vec!["-f", "./shavee", "-z", "zroot/test"],// -p -f ./shavee -z zroot/test (and PAM_USER env)
-                result: Sargs {
-                    mode: Mode::Mount{dataset: String::from("zroot/test")}, // Check if PAM_USER is appended.
-                    umode: Umode::File{ file: String::from("./shavee"), port: None, size: None},
-                }
-            },
-            ArgResultPair {
-                arg: vec!["-c", "-z", "zroot/test"],    // -c -z zroot/test
-                result: Sargs {
-                    mode: Mode::Create{ dataset: String::from("zroot/test")},
-                    umode: Umode::Password,
-                }
+                },
             },
             ArgResultPair {
                 arg: vec!["--create", "--zset", "zroot/test/"], // --create --zset zroot/test/
                 result: Sargs {
-                    mode: Mode::Create{ dataset: String::from("zroot/test")},
+                    mode: Mode::Create {
+                        dataset: String::from("zroot/test"),
+                    },
                     umode: Umode::Password,
-                }
+                },
             },
             ArgResultPair {
                 arg: vec!["-y", "-s", "1", "-c", "-z", "zroot/test/"], // -y -s 1 -c -z zroot/test/
                 result: Sargs {
-                    mode: Mode::Create{ dataset: String::from("zroot/test")},
-                    umode: Umode::Yubikey{ yslot: 1 },
-                }
+                    mode: Mode::Create {
+                        dataset: String::from("zroot/test"),
+                    },
+                    umode: Umode::Yubikey { yslot: 1 },
+                },
             },
         ];
 
@@ -370,31 +407,28 @@ mod tests {
             args.extend(valid_arguments_results_pairs[index].arg.clone());
             assert_eq!(
                 Sargs::new_from(args.iter()).unwrap(),
-                valid_arguments_results_pairs[index].result);
+                valid_arguments_results_pairs[index].result
+            );
         }
 
         // For the invalid arguments, there is no output struct and we only check for error
 
         let invalid_arguments = [
-            vec!["-s"],                          // -s
-            vec!["--slot"],                      // --slot
-            vec!["--slot", "2"],                 // --slot 2
-            vec!["-y", "-s", "3"],               // -y -s 3
-            vec!["--file"],                      // --file
-            vec!["-f"],                          // -f
-            vec!["-y", "-f", "./shavee"],        // -y -f ./shavee
-            vec!["-z"],                          // -z
-            vec!["--zset"],                      // --zset
-            vec!["--pam"],                       // --pam
-            vec!["-p"],                          // -p
-            vec!["--port", "80"],                // --port 80
-            vec!["-P"],                          // -P
-            vec!["-P", "0", "-f", "./shavee"],   // -P 0 -f ./shavee
-            vec!["-c"],                          // -c
-            vec!["--create"],                    // --create
-            vec!["-p", "-c", "-z", "zroot/test"],// --pam -c -z zroot/test
-            vec!["-p", "-z", "zroot/test"],      // --pam -z zroot/test (no PAM_USER)
-            ];
+            vec!["-s"],                        // -s
+            vec!["--slot"],                    // --slot
+            vec!["--slot", "2"],               // --slot 2
+            vec!["-y", "-s", "3"],             // -y -s 3
+            vec!["--file"],                    // --file
+            vec!["-f"],                        // -f
+            vec!["-y", "-f", "./shavee"],      // -y -f ./shavee
+            vec!["-z"],                        // -z
+            vec!["--zset"],                    // --zset
+            vec!["--port", "80"],              // --port 80
+            vec!["-P"],                        // -P
+            vec!["-P", "0", "-f", "./shavee"], // -P 0 -f ./shavee
+            vec!["-c"],                        // -c
+            vec!["--create"],                  // --create
+        ];
 
         for index in 0..invalid_arguments.len() {
             let mut args = Vec::new();
