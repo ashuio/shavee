@@ -7,6 +7,7 @@ license = "MIT"
 
 [lib]
 crate-type = ["cdylib"]
+name = "shavee_pam"
 
 [dependencies]
 pamsm = {version="0.5.0", features=["libpam"] }

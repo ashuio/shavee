@@ -16,9 +16,16 @@ struct PamShavee;
 impl PamServiceModule for PamShavee {
     fn authenticate(pam: Pam, _: PamFlags, args: Vec<String>) -> PamError {
         let mut clap_args: Vec<String> = Vec::new();
-        clap_args.push("shavee".to_string());
+        clap_args.push("libshavee_pam.so".to_string());
         clap_args.extend(args);
-        let state = args::Pargs::new_from(clap_args.into_iter()).unwrap(); // Parse Args
+        let state = match args::Pargs::new_from(clap_args.into_iter()) {
+            // Parse Args
+            Ok(args) => args,
+            Err(e) => {
+                eprintln!("Error: {}", e);
+                return PamError::BAD_ITEM;
+            }
+        };
         let user = pam.get_user(Some("Username: "));
         let user = match user {
             Ok(i) => i,
