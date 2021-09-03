@@ -1,6 +1,6 @@
 use crate::{password::hash_argon2, yubikey::*, zfs::*};
 use base64::encode_config;
-use std::{error::Error};
+use std::error::Error;
 
 fn unwrap_dataset(dataset: Option<String>) -> Result<String, Box<dyn Error>> {
     Ok(match dataset {
