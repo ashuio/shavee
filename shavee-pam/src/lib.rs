@@ -26,30 +26,22 @@ impl PamServiceModule for PamShavee {
                 return PamError::BAD_ITEM;
             }
         };
-        let user = match pam.get_user(Some("Username: ")) {
-            Ok(None) => return PamError::USER_UNKNOWN,
-            Ok(username) => match username.unwrap().to_str() {
-                Ok(s) => s,
-                Err(e) => {
-                    eprintln!("Error {}!", e);
-                    return PamError::USER_UNKNOWN;
-                }
-            },
-            Err(e) => {
-                eprintln!("Error {}!", e);
-                return e;
-            }
-        };
-        let mut dataset = state.dataset;
-        dataset.push('/');
-        dataset.push_str(user); // Push Username to dataset
 
-        let pass = pam
-            .get_authtok(Some("Dataset Password: "))
-            .unwrap()
-            .unwrap()
-            .to_string_lossy()
-            .to_string();
+        let dataset =
+            match pam_user_pass_expect(pam.get_user(Some("Username: ")), PamError::USER_UNKNOWN) {
+                Ok(user) => {
+                    let mut d = state.dataset;
+                    d.push('/');
+                    d.push_str(user);
+                    d
+                }
+                Err(e) => return e,
+            };
+
+        let pass = match pam_user_pass_expect(pam.get_authtok(None), PamError::AUTHINFO_UNAVAIL) {
+            Ok(value) => value.to_string(),
+            Err(value) => return value,
+        };
 
         match state.umode {
             shavee_lib::Umode::Yubikey { yslot } => {
@@ -119,6 +111,27 @@ impl PamServiceModule for PamShavee {
             Err(_) => return PamError::SESSION_ERR,
         }
     }
+}
+
+fn pam_user_pass_expect(
+    pam_key: Result<Option<&std::ffi::CStr>, PamError>,
+    pam_error: PamError,
+) -> Result<&str, PamError> {
+    let key = match pam_key {
+        Ok(None) => return Err(pam_error),
+        Ok(username) => match username.unwrap().to_str() {
+            Ok(s) => s,
+            Err(e) => {
+                eprintln!("Error {}!", e);
+                return Err(pam_error);
+            }
+        },
+        Err(e) => {
+            eprintln!("Error {}!", e);
+            return Err(e);
+        }
+    };
+    Ok(key)
 }
 
 pam_module!(PamShavee);
