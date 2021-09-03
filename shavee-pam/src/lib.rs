@@ -122,7 +122,7 @@ fn pam_user_pass_expect(
 ) -> Result<&str, PamError> {
     let key = match pam_key {
         Ok(None) => return Err(pam_error),
-        Ok(username) => match username.unwrap().to_str() {
+        Ok(value) => match value.unwrap().to_str() {
             Ok(s) => s,
             Err(e) => {
                 eprintln!("Error {}!", e);
