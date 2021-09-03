@@ -14,7 +14,7 @@ impl Pargs {
         I: Iterator<Item = T>,
         T: Into<OsString> + Clone,
     {
-        let app = App::new("libshavee_pam.so")
+        let pam_app = App::new("libshavee_pam.so")
             .arg(
                 Arg::with_name("zset")
                     .short("z")
@@ -28,7 +28,7 @@ impl Pargs {
                     given dataset with the derived key instead of printing it. Takes zfs dataset path as argument and \
                     it will automatically append login username"),
             );
-        let (mode, umode) = common_args(app, args)?;
+        let (mode, umode) = common_args(pam_app, args)?;
 
         let dataset = match mode {
             Mode::Create { dataset } => dataset,
