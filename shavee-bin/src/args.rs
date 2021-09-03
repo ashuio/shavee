@@ -25,7 +25,7 @@ impl Sargs {
         I: Iterator<Item = T>,
         T: Into<OsString> + Clone,
     {
-        let app = App::new(crate_name!())
+        let cli_app = App::new(crate_name!())
             .about(crate_description!()) // Define APP and args
             .author(crate_authors!())
             .version(crate_version!())
@@ -51,7 +51,7 @@ impl Sargs {
                     If present in conjunction with any of the other options, it will try to unlock and mount the \
                     given dataset with the derived key instead of printing it. Takes zfs dataset path as argument."),
             );
-        let (mode, umode) = common_args(app, args)?;
+        let (mode, umode) = common_args(cli_app, args)?;
         Ok(Sargs { mode, umode })
     }
 }
