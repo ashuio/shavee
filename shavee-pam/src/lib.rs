@@ -14,17 +14,36 @@ use shavee_lib::{
 struct PamShavee;
 
 impl PamServiceModule for PamShavee {
+    fn open_session(_: Pam, _: PamFlags, _: Vec<String>) -> PamError {
+        PamError::SUCCESS
+    }
+
+    fn close_session(pam: Pam, _flags: PamFlags, args: Vec<String>) -> PamError {
+        let state = match pam_parse_args(args) {
+            Ok(value) => value,
+            Err(e) => return e,
+        };
+
+        let dataset =
+            match pam_user_pass_expect(pam.get_user(Some("Username: ")), PamError::USER_UNKNOWN) {
+                Ok(user) => {
+                    let mut d = state.dataset;
+                    d.push('/');
+                    d.push_str(user);
+                    d
+                }
+                Err(e) => return e,
+            };
+
+        match zfs_umount(dataset) {
+            Ok(()) => return PamError::SUCCESS,
+            Err(_) => return PamError::SESSION_ERR,
+        }
+    }
     fn authenticate(pam: Pam, _flags: PamFlags, args: Vec<String>) -> PamError {
-        let mut clap_args: Vec<String> = Vec::new();
-        clap_args.push("libshavee_pam.so".to_string());
-        clap_args.extend(args);
-        let state = match args::Pargs::new_from(clap_args.into_iter()) {
-            // Parse Args
-            Ok(args) => args,
-            Err(e) => {
-                eprintln!("Error: {}", e);
-                return PamError::BAD_ITEM;
-            }
+        let state = match pam_parse_args(args) {
+            Ok(value) => value,
+            Err(e) => return e,
         };
 
         let dataset =
@@ -86,31 +105,21 @@ impl PamServiceModule for PamShavee {
     fn setcred(_: Pam, _: PamFlags, _: Vec<String>) -> PamError {
         PamError::SUCCESS
     }
-    fn open_session(_: Pam, _: PamFlags, _: Vec<String>) -> PamError {
-        PamError::SUCCESS
-    }
+}
 
-    fn close_session(pam: Pam, _: PamFlags, _: Vec<String>) -> PamError {
-        let mut dataset = String::from("zroot/data/home/");
-        let p = Some("Username: ");
-
-        let user = pam.get_user(p);
-        let user = match user {
-            Ok(i) => i,
-            _ => return PamError::USER_UNKNOWN,
-        };
-
-        let user = match user {
-            Some(i) => i.to_str().unwrap(),
-            _ => return PamError::USER_UNKNOWN,
-        };
-
-        dataset.push_str(user);
-        match zfs_umount(dataset) {
-            Ok(_) => return PamError::SUCCESS,
-            Err(_) => return PamError::SESSION_ERR,
+fn pam_parse_args(args: Vec<String>) -> Result<args::Pargs, PamError> {
+    let mut clap_args: Vec<String> = Vec::new();
+    clap_args.push("libshavee_pam.so".to_string());
+    clap_args.extend(args);
+    let state = match args::Pargs::new_from(clap_args.into_iter()) {
+        // Parse Args
+        Ok(args) => args,
+        Err(e) => {
+            eprintln!("Error: {}", e);
+            return Err(PamError::BAD_ITEM);
         }
-    }
+    };
+    Ok(state)
 }
 
 fn pam_user_pass_expect(
