@@ -14,7 +14,7 @@ use shavee_lib::{
 struct PamShavee;
 
 impl PamServiceModule for PamShavee {
-    fn authenticate(pam: Pam, _: PamFlags, args: Vec<String>) -> PamError {
+    fn authenticate(pam: Pam, _flags: PamFlags, args: Vec<String>) -> PamError {
         let mut clap_args: Vec<String> = Vec::new();
         clap_args.push("libshavee_pam.so".to_string());
         clap_args.extend(args);
@@ -26,14 +26,19 @@ impl PamServiceModule for PamShavee {
                 return PamError::BAD_ITEM;
             }
         };
-        let user = pam.get_user(Some("Username: "));
-        let user = match user {
-            Ok(i) => i,
-            _ => return PamError::USER_UNKNOWN,
-        };
-        let user = match user {
-            Some(i) => i.to_str().unwrap(),
-            _ => return PamError::USER_UNKNOWN,
+        let user = match pam.get_user(Some("Username: ")) {
+            Ok(None) => return PamError::USER_UNKNOWN,
+            Ok(username) => match username.unwrap().to_str() {
+                Ok(s) => s,
+                Err(e) => {
+                    eprintln!("Error {}!", e);
+                    return PamError::USER_UNKNOWN;
+                }
+            },
+            Err(e) => {
+                eprintln!("Error {}!", e);
+                return e;
+            }
         };
         let mut dataset = state.dataset;
         dataset.push('/');
@@ -46,15 +51,17 @@ impl PamServiceModule for PamShavee {
             .to_string_lossy()
             .to_string();
 
-        match state.mode {
-            args::Mode::Yubikey { yslot } => match unlock_zfs_yubi(pass, Some(dataset), yslot) {
-                Ok(_) => return PamError::SUCCESS,
-                Err(e) => {
-                    eprintln!("Error: {}", e.to_string());
-                    return PamError::AUTH_ERR;
+        match state.umode {
+            shavee_lib::Umode::Yubikey { yslot } => {
+                match unlock_zfs_yubi(pass, Some(dataset), yslot) {
+                    Ok(_) => return PamError::SUCCESS,
+                    Err(e) => {
+                        eprintln!("Error: {}", e.to_string());
+                        return PamError::AUTH_ERR;
+                    }
                 }
-            },
-            args::Mode::File { file, port, size } => {
+            }
+            shavee_lib::Umode::File { file, port, size } => {
                 let filehash = match get_filehash(file, port, size) {
                     Ok(e) => e,
                     Err(e) => {
@@ -70,7 +77,7 @@ impl PamServiceModule for PamShavee {
                     }
                 }
             }
-            args::Mode::Password => {
+            shavee_lib::Umode::Password => {
                 let key = hash_argon2(pass.into_bytes()).unwrap();
                 let key = encode_config(key, base64::STANDARD_NO_PAD);
                 match unlock_zfs_pass(key, Some(dataset)) {
