@@ -1,17 +1,11 @@
 use crate::{password::hash_argon2, yubikey::*, zfs::*};
 use base64::encode_config;
-use std::{error::Error, path::Path};
+use std::{error::Error};
 
 fn unwrap_dataset(dataset: Option<String>) -> Result<String, Box<dyn Error>> {
     Ok(match dataset {
         None => {
-            let error_message = "Error: ZFS dataset unknown!";
-            eprintln!("{}", error_message);
-            return Err(error_message.into());
-        }
-        Some(d) if !Path::new(&d).exists() => {
-            let error_message = format!("Error: Invalid ZFS dataset path: {}", d);
-            eprintln!("{}", error_message);
+            let error_message = "ZFS dataset unknown!";
             return Err(error_message.into());
         }
         Some(d) => d,
@@ -94,7 +88,7 @@ pub fn unlock_zfs_pass(key: String, dataset: Option<String>) -> Result<(), Box<d
                 match zfs_mount(sets) {
                     Ok(()) => (),
                     Err(error) => {
-                        eprintln!("ERROR: {}", error);
+                        return Err(error);
                     }
                 }
             }
