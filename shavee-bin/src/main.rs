@@ -1,14 +1,8 @@
 mod args;
 
-use args::Sargs;
+use args::{Mode, Sargs, Umode};
 use base64::encode_config;
-use shavee_lib::{
-    filehash::get_filehash,
-    logic::*,
-    password::hash_argon2,
-    zfs::*,
-    Mode,
-    Umode};
+use shavee_lib::{filehash::get_filehash, logic::*, password::hash_argon2, zfs::*};
 use std::error::Error;
 use std::process::exit;
 use std::thread;
