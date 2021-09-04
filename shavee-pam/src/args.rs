@@ -29,15 +29,7 @@ impl Pargs {
     {
         let pam_app = App::new("libshavee_pam.so")
         .arg(
-            clap::Arg::with_name("verbose")
-                .long("verbose")
-                .short("v")
-                .help("Enables verbose error messages.")
-                .required(false)
-                .takes_value(false)
-        )
-        .arg(
-            clap::Arg::with_name("yubikey")
+            Arg::with_name("yubikey")
                 .long("yubi")
                 .short("y")
                 .help("Use Yubikey HMAC as second factor")
@@ -46,7 +38,7 @@ impl Pargs {
                 .conflicts_with("keyfile"), // yubikey xor keyfile, not both. 
         )
         .arg(
-            clap::Arg::with_name("slot")
+            Arg::with_name("slot")
                 .short("s")
                 .long("slot")
                 .help("Yubikey HMAC Slot")
@@ -57,7 +49,7 @@ impl Pargs {
                 .requires("yubikey"),   // it must be accompanied by yubikey option
         )
         .arg(
-            clap::Arg::with_name("keyfile")
+            Arg::with_name("keyfile")
                 .short("f")
                 .long("file")
                 .help("Use any file as second factor, takes filepath, SFTP or a HTTP(S) location as an argument. \
@@ -70,7 +62,7 @@ impl Pargs {
                 .conflicts_with("yubikey"), // keyfile xor yubikey, not both.
         )
         .arg(
-            clap::Arg::with_name("port")
+            Arg::with_name("port")
                 .short("P")
                 .long("port")
                 .takes_value(true)
