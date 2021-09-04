@@ -44,9 +44,9 @@ impl PamServiceModule for PamShavee {
         };
 
         let result = match umode {
-            shavee_lib::Umode::Yubikey { yslot } => unlock_zfs_yubi(pass, Some(dataset), yslot),
+            args::Umode::Yubikey { yslot } => unlock_zfs_yubi(pass, Some(dataset), yslot),
 
-            shavee_lib::Umode::File { file, port, size } => {
+            args::Umode::File { file, port, size } => {
                 let filehash = match get_filehash(file, port, size) {
                     Ok(e) => e,
                     Err(e) => {
@@ -57,7 +57,7 @@ impl PamServiceModule for PamShavee {
                 unlock_zfs_file(pass, filehash, Some(dataset))
             }
 
-            shavee_lib::Umode::Password => {
+            args::Umode::Password => {
                 let key = hash_argon2(pass.into_bytes()).unwrap();
                 let key = encode_config(key, base64::STANDARD_NO_PAD);
                 unlock_zfs_pass(key, Some(dataset))
@@ -78,10 +78,7 @@ impl PamServiceModule for PamShavee {
     }
 }
 
-fn parse_pam_args(
-    args: Vec<String>,
-    pam: Pam,
-) -> Result<(shavee_lib::Umode, String, String), PamError> {
+fn parse_pam_args(args: Vec<String>, pam: Pam) -> Result<(args::Umode, String, String), PamError> {
     let state = match {
         let mut clap_args: Vec<String> = Vec::new();
         clap_args.push("libshavee_pam.so".to_string());
@@ -100,7 +97,7 @@ fn parse_pam_args(
         Err(e) => return Err(e),
     };
     let dataset =
-        match pam_user_pass_expect(pam.get_user(Some("Username: ")), PamError::USER_UNKNOWN) {
+        match unwrap_pam_user_pass(pam.get_user(Some("Username: ")), PamError::USER_UNKNOWN) {
             Ok(user) => {
                 let mut d = state.dataset;
                 d.push('/');
@@ -109,14 +106,14 @@ fn parse_pam_args(
             }
             Err(e) => return Err(e),
         };
-    let pass = match pam_user_pass_expect(pam.get_authtok(None), PamError::AUTHINFO_UNAVAIL) {
+    let pass = match unwrap_pam_user_pass(pam.get_authtok(None), PamError::AUTHINFO_UNAVAIL) {
         Ok(value) => value.to_string(),
         Err(value) => return Err(value),
     };
     Ok((state.umode, dataset, pass))
 }
 
-fn pam_user_pass_expect(
+fn unwrap_pam_user_pass(
     pam_key: Result<Option<&std::ffi::CStr>, PamError>,
     pam_error: PamError,
 ) -> Result<&str, PamError> {
