@@ -49,17 +49,7 @@ impl Sargs {
             .author(crate_authors!())
             .version(crate_version!())
             .arg(
-                Arg::with_name("create")
-                    .short("c")
-                    .long("create")
-                    .takes_value(false)
-                    .required(false)
-                    .requires("zset")
-                    .next_line_help(true)   // long help description will be printed in the next line
-                    .help("Create/Change key of a ZFS dataset with the derived encryption key. Must be used with --zset"),
-            )
-            .arg(
-                clap::Arg::with_name("yubikey")
+                Arg::with_name("yubikey")
                     .long("yubi")
                     .short("y")
                     .help("Use Yubikey HMAC as second factor")
@@ -68,7 +58,7 @@ impl Sargs {
                     .conflicts_with("keyfile"), // yubikey xor keyfile, not both. 
             )
             .arg(
-                clap::Arg::with_name("slot")
+                Arg::with_name("slot")
                     .short("s")
                     .long("slot")
                     .help("Yubikey HMAC Slot")
@@ -79,7 +69,7 @@ impl Sargs {
                     .requires("yubikey"),   // it must be accompanied by yubikey option
             )
             .arg(
-                clap::Arg::with_name("keyfile")
+                Arg::with_name("keyfile")
                     .short("f")
                     .long("file")
                     .help("Use any file as second factor, takes filepath, SFTP or a HTTP(S) location as an argument. \
@@ -92,7 +82,17 @@ impl Sargs {
                     .conflicts_with("yubikey"), // keyfile xor yubikey, not both.
             )
             .arg(
-                clap::Arg::with_name("port")
+                Arg::with_name("create")
+                    .short("c")
+                    .long("create")
+                    .takes_value(false)
+                    .required(false)
+                    .requires("zset")
+                    .next_line_help(true)   // long help description will be printed in the next line
+                    .help("Create/Change key of a ZFS dataset with the derived encryption key. Must be used with --zset"),
+            )
+            .arg(
+                Arg::with_name("port")
                     .short("P")
                     .long("port")
                     .takes_value(true)
@@ -150,15 +150,6 @@ impl Sargs {
             None => 2,
         };
 
-        let umode = if arg.is_present("yubikey") {
-            Umode::Yubikey { yslot }
-        } else if arg.is_present("keyfile") {
-            let file = file.expect(shavee_lib::UNREACHABLE_CODE);
-            Umode::File { file, port, size }
-        } else {
-            Umode::Password
-        };
-
         let mode = if arg.is_present("create") {
             let dataset = dataset.expect(shavee_lib::UNREACHABLE_CODE);
             Mode::Create { dataset }
@@ -168,6 +159,16 @@ impl Sargs {
         } else {
             Mode::Print
         };
+
+        let umode = if arg.is_present("yubikey") {
+            Umode::Yubikey { yslot }
+        } else if arg.is_present("keyfile") {
+            let file = file.expect(shavee_lib::UNREACHABLE_CODE);
+            Umode::File { file, port, size }
+        } else {
+            Umode::Password
+        };
+
         Ok(Sargs { mode, umode })
     }
 }
