@@ -14,7 +14,72 @@ use shavee_lib::{
 struct PamShavee;
 
 impl PamServiceModule for PamShavee {
-    fn authenticate(pam: Pam, _: PamFlags, args: Vec<String>) -> PamError {
+    fn open_session(_: Pam, _: PamFlags, _: Vec<String>) -> PamError {
+        PamError::SUCCESS
+    }
+
+    fn close_session(pam: Pam, _flags: PamFlags, args: Vec<String>) -> PamError {
+        let (_umode, dataset, _pass) = match parse_pam_args(args, pam) {
+            Ok(value) => value,
+            Err(e) => return e,
+        };
+
+        match zfs_umount(dataset.clone()) {
+            Ok(()) => return PamError::SUCCESS,
+            Err(e) => {
+                eprintln!(
+                    "Error in unmounting user ZFS {} dataset: {}",
+                    dataset,
+                    e.to_string()
+                );
+                return PamError::SESSION_ERR;
+            }
+        }
+    }
+
+    fn authenticate(pam: Pam, _flags: PamFlags, args: Vec<String>) -> PamError {
+        let (umode, dataset, pass) = match parse_pam_args(args, pam) {
+            Ok(value) => value,
+            Err(e) => return e,
+        };
+
+        let result = match umode {
+            args::Umode::Yubikey { yslot } => unlock_zfs_yubi(pass, Some(dataset), yslot),
+
+            args::Umode::File { file, port, size } => {
+                let filehash = match get_filehash(file, port, size) {
+                    Ok(e) => e,
+                    Err(e) => {
+                        eprintln!("Error in generating filehash: {}", e.to_string());
+                        return PamError::AUTHINFO_UNAVAIL;
+                    }
+                };
+                unlock_zfs_file(pass, filehash, Some(dataset))
+            }
+
+            args::Umode::Password => {
+                let key = hash_argon2(pass.into_bytes()).unwrap();
+                let key = encode_config(key, base64::STANDARD_NO_PAD);
+                unlock_zfs_pass(key, Some(dataset))
+            }
+        };
+
+        match result {
+            Ok(_) => return PamError::SUCCESS,
+            Err(e) => {
+                eprintln!("Error in mounting user ZFS dataset: {}", e.to_string());
+                return PamError::AUTH_ERR;
+            }
+        }
+    }
+
+    fn setcred(_: Pam, _: PamFlags, _: Vec<String>) -> PamError {
+        PamError::SUCCESS
+    }
+}
+
+fn parse_pam_args(args: Vec<String>, pam: Pam) -> Result<(args::Umode, String, String), PamError> {
+    let state = match {
         let mut clap_args: Vec<String> = Vec::new();
         clap_args.push("libshavee_pam.so".to_string());
         clap_args.extend(args);
@@ -23,95 +88,50 @@ impl PamServiceModule for PamShavee {
             Ok(args) => args,
             Err(e) => {
                 eprintln!("Error: {}", e);
-                return PamError::BAD_ITEM;
+                return Err(PamError::BAD_ITEM);
             }
         };
-        let user = pam.get_user(Some("Username: "));
-        let user = match user {
-            Ok(i) => i,
-            _ => return PamError::USER_UNKNOWN,
+        Ok(state)
+    } {
+        Ok(value) => value,
+        Err(e) => return Err(e),
+    };
+    let dataset =
+        match unwrap_pam_user_pass(pam.get_user(Some("Username: ")), PamError::USER_UNKNOWN) {
+            Ok(user) => {
+                let mut d = state.dataset;
+                d.push('/');
+                d.push_str(user);
+                d
+            }
+            Err(e) => return Err(e),
         };
-        let user = match user {
-            Some(i) => i.to_str().unwrap(),
-            _ => return PamError::USER_UNKNOWN,
-        };
-        let mut dataset = state.dataset;
-        dataset.push('/');
-        dataset.push_str(user); // Push Username to dataset
+    let pass = match unwrap_pam_user_pass(pam.get_authtok(None), PamError::AUTHINFO_UNAVAIL) {
+        Ok(value) => value.to_string(),
+        Err(value) => return Err(value),
+    };
+    Ok((state.umode, dataset, pass))
+}
 
-        let pass = pam
-            .get_authtok(Some("Dataset Password: "))
-            .unwrap()
-            .unwrap()
-            .to_string_lossy()
-            .to_string();
-
-        match state.mode {
-            args::Mode::Yubikey { yslot } => match unlock_zfs_yubi(pass, Some(dataset), yslot) {
-                Ok(_) => return PamError::SUCCESS,
-                Err(e) => {
-                    eprintln!("Error: {}", e.to_string());
-                    return PamError::AUTH_ERR;
-                }
-            },
-            args::Mode::File { file, port, size } => {
-                let filehash = match get_filehash(file, port, size) {
-                    Ok(e) => e,
-                    Err(e) => {
-                        eprintln!("Error: {}", e.to_string());
-                        return PamError::AUTHINFO_UNAVAIL;
-                    }
-                };
-                match unlock_zfs_file(pass, filehash, Some(dataset)) {
-                    Ok(_) => return PamError::SUCCESS,
-                    Err(e) => {
-                        eprintln!("Error: {}", e.to_string());
-                        return PamError::AUTH_ERR;
-                    }
-                }
+fn unwrap_pam_user_pass(
+    pam_key: Result<Option<&std::ffi::CStr>, PamError>,
+    pam_error: PamError,
+) -> Result<&str, PamError> {
+    let key = match pam_key {
+        Ok(None) => return Err(pam_error),
+        Ok(value) => match value.unwrap().to_str() {
+            Ok(s) => s,
+            Err(e) => {
+                eprintln!("Error {}!", e);
+                return Err(pam_error);
             }
-            args::Mode::Password => {
-                let key = hash_argon2(pass.into_bytes()).unwrap();
-                let key = encode_config(key, base64::STANDARD_NO_PAD);
-                match unlock_zfs_pass(key, Some(dataset)) {
-                    Ok(_) => return PamError::SUCCESS,
-                    Err(e) => {
-                        eprintln!("Error: {}", e.to_string());
-                        return PamError::AUTH_ERR;
-                    }
-                }
-            }
+        },
+        Err(e) => {
+            eprintln!("Error {}!", e);
+            return Err(e);
         }
-    }
-
-    fn setcred(_: Pam, _: PamFlags, _: Vec<String>) -> PamError {
-        PamError::SUCCESS
-    }
-    fn open_session(_: Pam, _: PamFlags, _: Vec<String>) -> PamError {
-        PamError::SUCCESS
-    }
-
-    fn close_session(pam: Pam, _: PamFlags, _: Vec<String>) -> PamError {
-        let mut dataset = String::from("zroot/data/home/");
-        let p = Some("Username: ");
-
-        let user = pam.get_user(p);
-        let user = match user {
-            Ok(i) => i,
-            _ => return PamError::USER_UNKNOWN,
-        };
-
-        let user = match user {
-            Some(i) => i.to_str().unwrap(),
-            _ => return PamError::USER_UNKNOWN,
-        };
-
-        dataset.push_str(user);
-        match zfs_umount(dataset) {
-            Ok(_) => return PamError::SUCCESS,
-            Err(_) => return PamError::SESSION_ERR,
-        }
-    }
+    };
+    Ok(key)
 }
 
 pam_module!(PamShavee);
