@@ -5,7 +5,7 @@ extern crate pamsm;
 
 use base64::encode_config;
 use pamsm::{Pam, PamError, PamFlags, PamLibExt, PamServiceModule};
-use shavee_lib::{
+use shavee_core::{
     filehash::get_filehash,
     logic::{unlock_zfs_file, unlock_zfs_pass, unlock_zfs_yubi},
     password::hash_argon2,

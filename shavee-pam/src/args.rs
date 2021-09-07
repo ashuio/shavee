@@ -1,5 +1,5 @@
 use clap::{App, Arg};
-use shavee_lib;
+use shavee_core;
 use std::ffi::OsString;
 
 #[derive(Debug, PartialEq)]
@@ -69,7 +69,7 @@ impl Pargs {
                 .value_name("port number")
                 .required(false)
                 .requires("keyfile")    // port must be accompanied by keyfile option
-                .validator(shavee_lib::port_check)  // validate that port parameter is "valid"
+                .validator(shavee_core::port_check)  // validate that port parameter is "valid"
                 .help("Set port for HTTP(S) and SFTP requests"),
         )
             .arg(
@@ -93,7 +93,7 @@ impl Pargs {
         // check for keyfile argument if parse them if needed.
         // otherwise fill them with None
         let (file, size) = match arg.values_of("keyfile") {
-            Some(value) => shavee_lib::parse_file_size_arguments(value)?,
+            Some(value) => shavee_core::parse_file_size_arguments(value)?,
             None => (None, None),
         };
 
@@ -118,20 +118,20 @@ impl Pargs {
         // The port arguments are <u16> or None (not entered by user)
         let port = arg
             .value_of("port")
-            .map(|p| p.parse::<u16>().expect(shavee_lib::UNREACHABLE_CODE));
+            .map(|p| p.parse::<u16>().expect(shavee_core::UNREACHABLE_CODE));
 
         // The accepted slot arguments are Some (1 or 2) or None (not entered by user)
         // Default value if not entered is 2
         let yslot = match arg.value_of("slot") {
             // exceptions should not happen, because the entry is already validated by clap
-            Some(s) => s.parse::<u8>().expect(shavee_lib::UNREACHABLE_CODE),
+            Some(s) => s.parse::<u8>().expect(shavee_core::UNREACHABLE_CODE),
             None => 2,
         };
 
         let umode = if arg.is_present("yubikey") {
             Umode::Yubikey { yslot }
         } else if arg.is_present("keyfile") {
-            let file = file.expect(shavee_lib::UNREACHABLE_CODE);
+            let file = file.expect(shavee_core::UNREACHABLE_CODE);
             Umode::File { file, port, size }
         } else {
             Umode::Password

@@ -11,7 +11,7 @@ name = "shavee_pam"
 
 [dependencies]
 pamsm = {version="0.5.0", features=["libpam"] }
-shavee_lib = {path = "../shavee-lib"}
+shavee_core = {path = "../shavee-core"}
 clap = "2.33.3"
 base64 = "0.13.0"
 

@@ -2,7 +2,7 @@ mod args;
 
 use args::{Mode, Sargs, Umode};
 use base64::encode_config;
-use shavee_lib::{filehash::get_filehash, logic::*, password::hash_argon2, zfs::*};
+use shavee_core::{filehash::get_filehash, logic::*, password::hash_argon2, zfs::*};
 use std::error::Error;
 use std::process::exit;
 use std::thread;
@@ -28,7 +28,7 @@ fn run(args: Sargs) -> Result<(), Box<dyn Error>> {
     // if multithread file hash code called then handle must not be used
     // thus initializing it with an error message.
     let mut handle: thread::JoinHandle<Result<Vec<u8>, String>> =
-        thread::spawn(|| Err(String::from(shavee_lib::UNREACHABLE_CODE)));
+        thread::spawn(|| Err(String::from(shavee_core::UNREACHABLE_CODE)));
     let mut filehash: Vec<u8> = vec![]; //empty u8 vector
 
     // if in the file 2FA mode, then generate file hash in parallel

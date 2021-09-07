@@ -1,11 +1,11 @@
 # shavee
 
-![rust workflow](https://github.com/ashuio/shavee/actions/workflows/rust.yml/badge.svg)
+<!-- ![rust workflow](https://github.com/ashuio/shavee/actions/workflows/rust.yml/badge.svg) -->
 [![GitHub license](https://img.shields.io/badge/license-MIT-blue)](https://github.com/ashuio/shavee/blob/master/LICENSE)
 [![GPG](https://img.shields.io/keybase/pgp/ashutoshverma)](https://ashu.io/gpg/)
 ![Crates.io](https://img.shields.io/crates/v/shavee)
     
-shavee is a simple program to decrypt and mount encrypted ZFS user home directories at login using Yubikey HMAC or a Simple USB drive as 2FA written in rust.
+shavee is a simple program and a pam module to automatically decrypt and mount encrypted ZFS user home directories using Yubikey HMAC or a Simple USB drive as 2FA written in rust.
 
 ## Supported methods
 This program currently supports two methods for 2FA:
@@ -81,17 +81,22 @@ cargo build --release
 ```bash
 sudo cp target/release/shavee /usr/bin
 ```
+5. Place Pam module in your module directory with
+```bash
+ sudo cp target/release/libshavee_pam.so /usr/lib/security/
+```
 
 Modes
 
-* pam    : For use with the pam_exec.so module (Used with the `-p` flag)
-* create : Creates/Changes Key of a Dataset with the derived key (Used with the `-c` option) 
+* pam    : For use with the pam_exec.so module (Used with the included pam module)
+* bin : Admin function for dataset management
+
+Eg. Creates/Changes Key of a Dataset with the derived key (Used with the `-c` option) 
 
 Flags/Options
 
 * `-y` : Use Yubikey for 2FA
 * `-f` : Use any file as 2FA, takes filepath or a HTTP(S) location as an argument.
-* `-p` : Enable PAM mode (Lower case p )
 * `-P` : Set port for HTTP and SFTP requests (Upper case P )
 * `-s` : Set Yubikey HMAC Slot (Can be either 1 or 2)
 * `-c` : Create/Change key of ZFS dataset with the derived encryption key
@@ -194,7 +199,7 @@ Run `udevadm control --reload-rules` after to make sure new rules are loaded.
 
 ## Use shavee with PAM to auto unlock homedir
 
-This program uses the pam_exec.so module to execute during the login process.
+This program comes with a pam module to execute during the login process.
 
 simply add the following line to your desired pam login method file.
 
@@ -202,12 +207,12 @@ In our example we will be adding it to **/etc/pam.d/sddm** to handle graphical l
 
 **Add the following line to you pam config file**
 ```
-auth    optional    pam_exec.so expose_authtok <full path to program> -p -y -z <base home dir>
+auth    optional    libshavee_pam.so -y -z <base home dir>
 ```
 
 **Example**
 ```
-auth    optional    pam_exec.so expose_authtok /usr/bin/shavee -p -y -z zroot/data/home
+auth    optional    libshavee_pam.so -y -z zroot/data/home
 ``` 
 Where `zroot/data/home` mounts to `/home`
 

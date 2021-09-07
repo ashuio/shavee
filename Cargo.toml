@@ -1,5 +1,5 @@
 [workspace]
-members = ["shavee-bin", "shavee-pam", "shavee-lib"]
+members = ["shavee-bin", "shavee-pam", "shavee-core"]
 
 [profile.release]
 lto = true
