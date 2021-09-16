@@ -88,10 +88,8 @@ sudo cp target/release/shavee /usr/bin
 
 Modes
 
-* pam    : For use with the pam_exec.so module (Used with the included pam module)
-* bin : Admin function for dataset management
-
-Eg. Creates/Changes Key of a Dataset with the derived key (Used with the `-c` option) 
+* Shavee PAM Module  : shavee PAM module to unlock home dir on login
+* Shavee Binary : Admin function for dataset management using shavee
 
 Flags/Options
 
