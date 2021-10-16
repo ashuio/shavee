@@ -25,10 +25,20 @@ impl PamServiceModule for PamShavee {
         };
 
         match zfs_umount(dataset.clone()) {
-            Ok(()) => return PamError::SUCCESS,
+            Ok(()) => match zfs_unload_key(dataset.clone()) {
+                Ok(()) => return PamError::SUCCESS,
+                Err(e) => {
+                    eprintln!(
+                        "Error in unloading ZFS dataset {} key: {}",
+                        dataset,
+                        e.to_string()
+                    );
+                    return PamError::SESSION_ERR;
+                }
+            },
             Err(e) => {
                 eprintln!(
-                    "Error in unmounting user ZFS {} dataset: {}",
+                    "Error in unmounting user {} ZFS dataset: {}",
                     dataset,
                     e.to_string()
                 );
@@ -79,22 +89,18 @@ impl PamServiceModule for PamShavee {
 }
 
 fn parse_pam_args(args: Vec<String>, pam: Pam) -> Result<(args::Umode, String, String), PamError> {
-    let state = match {
+    let state = {
         let mut clap_args: Vec<String> = Vec::new();
         clap_args.push("libshavee_pam.so".to_string());
         clap_args.extend(args);
-        let state = match args::Pargs::new_from(clap_args.into_iter()) {
+        match args::Pargs::new_from(clap_args.into_iter()) {
             // Parse Args
             Ok(args) => args,
             Err(e) => {
                 eprintln!("Error: {}", e);
                 return Err(PamError::BAD_ITEM);
             }
-        };
-        Ok(state)
-    } {
-        Ok(value) => value,
-        Err(e) => return Err(e),
+        }
     };
     let dataset =
         match unwrap_pam_user_pass(pam.get_user(Some("Username: ")), PamError::USER_UNKNOWN) {
