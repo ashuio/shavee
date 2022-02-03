@@ -29,17 +29,17 @@ impl Pargs {
     {
         let pam_app = App::new("libshavee_pam.so")
         .arg(
-            Arg::with_name("yubikey")
+            Arg::new("yubikey")
                 .long("yubi")
-                .short("y")
+                .short('y')
                 .help("Use Yubikey HMAC as second factor")
                 .required(false)
                 .takes_value(false)
                 .conflicts_with("keyfile"), // yubikey xor keyfile, not both. 
         )
         .arg(
-            Arg::with_name("slot")
-                .short("s")
+            Arg::new("slot")
+                .short('s')
                 .long("slot")
                 .help("Yubikey HMAC Slot")
                 .takes_value(true)
@@ -49,8 +49,8 @@ impl Pargs {
                 .requires("yubikey"),   // it must be accompanied by yubikey option
         )
         .arg(
-            Arg::with_name("keyfile")
-                .short("f")
+            Arg::new("keyfile")
+                .short('f')
                 .long("file")
                 .help("Use any file as second factor, takes filepath, SFTP or a HTTP(S) location as an argument. \
                 If SIZE is entered, the first SIZE in bytes will be used to generate hash. It must be number between \
@@ -62,8 +62,8 @@ impl Pargs {
                 .conflicts_with("yubikey"), // keyfile xor yubikey, not both.
         )
         .arg(
-            Arg::with_name("port")
-                .short("P")
+            Arg::new("port")
+                .short('P')
                 .long("port")
                 .takes_value(true)
                 .value_name("port number")
@@ -73,8 +73,8 @@ impl Pargs {
                 .help("Set port for HTTP(S) and SFTP requests"),
         )
             .arg(
-                Arg::with_name("zset")
-                    .short("z")
+                Arg::new("zset")
+                    .short('z')
                     .long("zset")
                     .takes_value(true)
                     .value_name("ZFS dataset")
@@ -88,7 +88,7 @@ impl Pargs {
 
         // in order to be able to write unit tests, getting the arg matches
         // shouldn't cause new_from() to exit or panic.
-        let arg = pam_app.get_matches_from_safe(args)?;
+        let arg = pam_app.try_get_matches_from(args)?;
 
         // check for keyfile argument if parse them if needed.
         // otherwise fill them with None
@@ -108,8 +108,11 @@ impl Pargs {
             }
             None => {
                 let error_message = r#"Dataset must be specified!"#;
+
+                // TODO: "with_description" is depricated.
+                #[allow(deprecated)]
                 return Err(clap::Error::with_description(
-                    error_message,
+                    error_message.to_string(),
                     clap::ErrorKind::EmptyValue,
                 ));
             }
