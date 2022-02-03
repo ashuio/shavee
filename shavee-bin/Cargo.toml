@@ -1,6 +1,6 @@
 [package]
 name = "shavee"
-version = "0.1.4"
+version = "0.5.0"
 authors = ["Ashutosh Verma <shavee@ashu.io>"]
 edition = "2018"
 license = "MIT"
@@ -13,10 +13,8 @@ repository = "https://github.com/ashuio/shavee"
 
 [dependencies]
 
-sha2 = "0.9.5"
-clap = "2.33.3"
+sha2 = "0.10.1"
+clap = { version = "3.*" , features = ["cargo"] }
 rpassword = "5.0.1"
 base64 = "0.13.0"
 shavee_core = {path = "../shavee-core"}
-# shavee_core = {git = "https://github.com/ashuio/shavee", branch = "master"}
-
