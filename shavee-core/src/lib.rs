@@ -32,8 +32,11 @@ pub fn parse_file_size_arguments(
             Err(_) => {
                 let error_message =
                     format!(r#""{}" is not valid for SIZE argument."#, second_entry);
+
+                //TODO: "with_description" is depreciated.
+                #[allow(deprecated)]
                 return Err(clap::Error::with_description(
-                    &error_message[..],
+                    error_message.to_string(),
                     clap::ErrorKind::InvalidValue,
                 ));
             }
@@ -47,7 +50,7 @@ pub fn parse_file_size_arguments(
     Ok((file, size))
 }
 
-pub fn port_check(v: String) -> Result<(), String> {
+pub fn port_check(v: &str) -> Result<(), String> {
     if v.parse::<u16>().is_ok() && v.parse::<u16>().unwrap() != 0 {
         return Ok(());
     } else {
@@ -66,7 +69,7 @@ mod tests {
         //Few examples of valid ports. Important to have the boundary values tested.
         let valid_ports = ["1", "80", "65535"];
         for valid_port in valid_ports {
-            match port_check(valid_port.to_string()) {
+            match port_check(valid_port) {
                 Err(_) => panic!("The port number {} should have been accepted!", valid_port),
                 Ok(()) => continue,
             }
@@ -76,7 +79,7 @@ mod tests {
         //Port 0 is reserved by IANA, it is technically invalid to use.
         let invalid_ports = ["-1", "65536", "a", "0"];
         for invalid_port in invalid_ports {
-            match port_check(invalid_port.to_string()) {
+            match port_check(invalid_port) {
                 Ok(()) => panic!(
                     "The port number {} should not have been accepted!",
                     invalid_port
