@@ -121,7 +121,11 @@ impl Sargs {
         // check for keyfile argument if parse them if needed.
         // otherwise fill them with None
         let (file, size) = match arg.values_of("keyfile") {
-            Some(value) => shavee_core::parse_file_size_arguments(value)?,
+            Some(values) => {
+                // convert the values to a vector
+                let file_size_argument: Vec<&str> = values.collect();
+                shavee_core::parse_file_size_arguments(file_size_argument)?
+            }
             None => (None, None),
         };
 
