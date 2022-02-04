@@ -114,7 +114,7 @@ impl Pargs {
                 let error_message = r#"Dataset must be specified!"#;
 
                 return Err(clap::Error::raw(
-                    clap::ErrorKind::InvalidValue,
+                    clap::ErrorKind::EmptyValue,
                     &error_message[..],
                 ));
             }
