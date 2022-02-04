@@ -93,7 +93,11 @@ impl Pargs {
         // check for keyfile argument if parse them if needed.
         // otherwise fill them with None
         let (file, size) = match arg.values_of("keyfile") {
-            Some(value) => shavee_core::parse_file_size_arguments(value)?,
+            Some(values) => {
+                // convert the values to a vector
+                let file_size_argument: Vec<&str> = values.collect();
+                shavee_core::parse_file_size_arguments(file_size_argument)?
+            },
             None => (None, None),
         };
 
@@ -109,11 +113,9 @@ impl Pargs {
             None => {
                 let error_message = r#"Dataset must be specified!"#;
 
-                // TODO: "with_description" is depricated.
-                #[allow(deprecated)]
-                return Err(clap::Error::with_description(
-                    error_message.to_string(),
-                    clap::ErrorKind::EmptyValue,
+                return Err(clap::Error::raw(
+                    clap::ErrorKind::InvalidValue,
+                    &error_message[..],
                 ));
             }
         };
