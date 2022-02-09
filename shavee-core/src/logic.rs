@@ -81,21 +81,10 @@ pub fn create_zfs_file(
 
 pub fn unlock_zfs_pass(key: String, dataset: Option<String>) -> Result<(), Box<dyn Error>> {
     let dataset = unwrap_dataset(dataset)?;
-    match zfs_list(dataset.clone()) {
-        Ok(i) => {
-            zfs_loadkey(key, dataset)?;
-            for sets in i {
-                match zfs_mount(sets) {
-                    Ok(()) => (),
-                    Err(error) => {
-                        return Err(error);
-                    }
-                }
-            }
-        }
-
-        Err(e) => return Err(e),
+    let dataset_list = zfs_list(dataset.clone())?;
+    zfs_loadkey(key, dataset)?;
+    for set in dataset_list {
+        zfs_mount(set)?;
     }
-
     Ok(())
 }
