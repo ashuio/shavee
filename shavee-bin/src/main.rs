@@ -25,7 +25,7 @@ fn main() {
 fn run(args: Sargs) -> Result<(), Box<dyn Error>> {
     // pre-initialize the handle and filehash and use them
     // if multithread is needed for file hash generation
-    // if multithread file hash code called then handle must not be used
+    // if multithread file hash code is not called then handle must not be used
     // thus initializing it with an error message.
     let mut handle: thread::JoinHandle<Result<Vec<u8>, String>> =
         thread::spawn(|| Err(String::from(shavee_core::UNREACHABLE_CODE)));
