@@ -187,3 +187,130 @@ fn execute_zfs_subcommand_then_collect_result(
     };
     Ok(())
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn zfs_functional_test() {
+        /*
+        This unit test, will need to setup a temp ZFS Pool
+        to test the functions on it.
+        It can only work if ZFS and ZPOOL are installed and root permission is given.
+        */
+
+        // Check for root permission and exit early
+        if !nix::unistd::Uid::effective().is_root() {
+            panic!("Root permission is needed! Test terminated early!");
+        }
+
+        // Check for ZFS tools and exit early
+        Command::new("zpool")
+            .spawn()
+            .expect("ZFS and ZPOOL tools must be installed. Test terminated early!");
+
+        // make a temp folder in the system temp directory
+        // this temp folder will be automatically deleted at the end of unit test
+        let temp_folder = tempfile::tempdir()
+            .expect("Couldn't make a temp folder! Test terminated early!")
+            .into_path();
+
+        // Use a random name to avoid modifying an existing ZFS pool and dataset
+        let zpool_name = random_string(30);
+
+        // Use a random mount point for Zpool alt_root
+        let mut zpool_alt_root = temp_folder.clone();
+        zpool_alt_root.push(random_string(10));
+
+        let mut zpool_path = temp_folder.clone();
+        zpool_path.push(zpool_name.clone());
+
+        // Generate a 512MB file which will be used as ZFS pool vdev
+        Command::new("truncate")
+            .arg("--size")
+            .arg("512M")
+            .arg(zpool_path.clone())
+            .spawn()
+            .expect("Cannot generate a temp file. Test terminated early!");
+
+        // create a new temporarily zpool using vdev
+        let command_output = Command::new("zpool")
+            .arg("create")
+            .arg(zpool_name)
+            .arg(zpool_path)
+            .arg("-R")
+            .arg(zpool_alt_root)
+            .status()
+            .expect("Zpool creation failed! Test terminated early!");
+
+        if !command_output.success() {
+            panic!("Zpool creation failed! Test terminated early!");
+        }
+
+        // now we can test the functions
+        // test creating an encrypted dataset
+        // use a random dataset and key
+        let zfs_dataset = random_string(10);
+        let zfs_key = random_string(10);
+
+        zfs_create(zfs_key, Some(zfs_dataset)).expect("Test failed: zfs_create()");
+    }
+
+    //These tests checks for a reported error on non-existing dataset
+    #[test]
+    fn dataset_does_not_exists_test() {
+        // use a random name for dataset to assure it doesn't already exists!
+        let dataset = random_string(30);
+        let expected_error = format!("cannot open '{}': dataset does not exist\n", dataset);
+
+        // test all functions in a separate assert_eq
+
+        assert_eq!(
+            execute_zfs_subcommand_then_collect_result("mount", dataset.clone())
+                .unwrap_err()
+                .to_string(),
+            expected_error
+        );
+
+        assert_eq!(
+            zfs_loadkey("passkey_not_important".to_string(), dataset.clone())
+                .unwrap_err()
+                .to_string(),
+            expected_error
+        );
+
+        assert_eq!(
+            zfs_list(dataset.clone()).unwrap_err().to_string(),
+            expected_error
+        );
+
+        // NOTE: this test doesn't apply to zfs_create
+
+        assert_eq!(
+            zfs_mount(dataset.clone()).unwrap_err().to_string(),
+            expected_error
+        );
+
+        assert_eq!(
+            zfs_umount(dataset.clone()).unwrap_err().to_string(),
+            expected_error
+        );
+
+        assert_eq!(
+            zfs_unload_key(dataset.clone()).unwrap_err().to_string(),
+            expected_error
+        );
+    }
+
+    fn random_string(length: u8) -> String {
+        use rand::distributions::Alphanumeric;
+        use rand::{thread_rng, Rng};
+
+        thread_rng()
+            .sample_iter(&Alphanumeric)
+            .take(length as usize)
+            .map(char::from)
+            .collect()
+    }
+}
