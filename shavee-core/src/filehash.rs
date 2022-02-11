@@ -297,6 +297,13 @@ mod tests {
                 ),
             };
         }
+
+        // clean up to delete the temp folder
+        std::process::Command::new("rm")
+            .arg("-rf")
+            .arg(temp_folder)
+            .spawn()
+            .expect("Temp folder clean up failed!");
     }
 
     #[test]
@@ -628,5 +635,12 @@ mod tests {
                 }
             };
         }
+
+        // clean up to delete the temp folder
+        std::process::Command::new("rm")
+            .arg("-rf")
+            .arg(temp_folder)
+            .spawn()
+            .expect("Temp folder clean up failed!");
     }
 }
