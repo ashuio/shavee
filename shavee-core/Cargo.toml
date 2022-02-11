@@ -15,5 +15,5 @@ clap = { version = "3" , features = ["cargo"] }
 
 [dev-dependencies]
 tempfile = "*"
-rand = "*"
 nix = "0.*"
+random-string = "1"
