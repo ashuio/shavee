@@ -63,12 +63,12 @@ fn run(args: Sargs) -> Result<(), Box<dyn Error>> {
         Umode::Yubikey { yslot } => match args.mode {
             Mode::Print => print_mode_yubi(pass, yslot)?,
             Mode::Mount { dataset } => unlock_zfs_yubi(pass, Some(dataset), yslot)?,
-            Mode::Create { dataset } => create_zfs_yubi(pass, Some(dataset), yslot)?,
+            Mode::Create { dataset } => create_zfs_yubi(pass, dataset, yslot)?,
         },
         Umode::File { .. } => match args.mode {
             Mode::Print => print_mode_file(pass, filehash)?,
             Mode::Mount { dataset } => unlock_zfs_file(pass, filehash, Some(dataset))?,
-            Mode::Create { dataset } => create_zfs_file(pass, filehash, Some(dataset))?,
+            Mode::Create { dataset } => create_zfs_file(pass, filehash, dataset)?,
         },
         Umode::Password => {
             let key = hash_argon2(pass.into_bytes())?;
@@ -76,7 +76,7 @@ fn run(args: Sargs) -> Result<(), Box<dyn Error>> {
             match args.mode {
                 Mode::Print => println!("{}", key),
                 Mode::Mount { dataset } => unlock_zfs_pass(key, Some(dataset))?,
-                Mode::Create { dataset } => zfs_create(key, Some(dataset))?,
+                Mode::Create { dataset } => zfs_create(key, dataset)?,
             }
         }
     })
