@@ -41,11 +41,7 @@ pub fn unlock_zfs_yubi(
     Ok(())
 }
 
-pub fn create_zfs_yubi(
-    pass: String,
-    zfspath: Option<String>,
-    slot: u8,
-) -> Result<(), Box<dyn Error>> {
+pub fn create_zfs_yubi(pass: String, zfspath: String, slot: u8) -> Result<(), Box<dyn Error>> {
     let key = yubi_key_calculation(pass, slot)?;
     zfs_create(key, zfspath)?;
     Ok(())
@@ -72,7 +68,7 @@ pub fn unlock_zfs_file(
 pub fn create_zfs_file(
     pass: String,
     filehash: Vec<u8>,
-    dataset: Option<String>,
+    dataset: String,
 ) -> Result<(), Box<dyn Error>> {
     let key = file_key_calculation(pass, filehash)?;
     zfs_create(key, dataset)?;
