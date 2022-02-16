@@ -12,25 +12,24 @@ use clap;
 pub fn parse_file_size_arguments(
     file_size_argument: Vec<&str>,
 ) -> Result<(Option<String>, Option<u64>), clap::Error> {
-    // If user entered SIZE arg value, it will be wrapped with Some(), otherwise None will be returned
-    let size: Option<u64>;
-
     // first [0] value is the file name
     // it is a required field for "--file" and its existence already checked by clap
     let file = Some(file_size_argument[0].to_string());
 
-    match file_size_argument.len() {
+    // If user entered SIZE arg value, it will be wrapped with Some(), otherwise None will be returned
+    let size = match file_size_argument.len() {
         // if there is only 1 entry then it is file name and size is set to None
-        number_of_entries if number_of_entries == 1 => {
-            size = None;
-        }
+        number_of_entries if number_of_entries == 1 => None,
         // if there are 2 entries, then 2nd entry is size
         number_of_entries if number_of_entries == 2 => {
             // if "--file" has two entries, then 2nd [1] is size
             let second_entry = file_size_argument[1];
-
             // however the size entry needs to be validated and return error if it is not a u64 value
-            size = match second_entry.parse::<u64>() {
+            match second_entry.parse::<u64>() {
+                // wrap the parsed entry with Some()
+                Ok(size_arg) => Some(size_arg),
+
+                // on error return invalid value kind
                 Err(_) => {
                     let error_message =
                         format!(r#""{}" is not valid for SIZE argument."#, second_entry);
@@ -40,9 +39,7 @@ pub fn parse_file_size_arguments(
                         &error_message[..],
                     ));
                 }
-                // wrap the parsed entry with Some()
-                Ok(size_arg) => Some(size_arg),
-            };
+            }
         }
 
         // clap checks against number of entries must not allow any other value than 1 and 2 entries
@@ -60,10 +57,10 @@ pub fn parse_file_size_arguments(
 
 pub fn port_check(v: &str) -> Result<(), String> {
     if v.parse::<u16>().is_ok() && v.parse::<u16>().unwrap() != 0 {
-        return Ok(());
+        Ok(())
     } else {
         let error_message = format!(r#""{}" is an invalid port number!"#, v);
-        return Err(error_message);
+        Err(error_message)
     }
 }
 

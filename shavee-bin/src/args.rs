@@ -1,5 +1,7 @@
+//TODO (Issue #16): Implement clap_config() once it is ported to clap 3.0
 use clap::{crate_authors, crate_description, crate_name, crate_version, App, Arg};
 use shavee_core;
+use shavee_core::zfs::Dataset;
 use std::env;
 use std::ffi::OsString;
 
@@ -18,8 +20,8 @@ pub enum Umode {
 
 #[derive(Debug, PartialEq)]
 pub enum Mode {
-    Create { dataset: String },
-    Mount { dataset: String },
+    Create { dataset: Dataset },
+    Mount { dataset: Dataset },
     Print,
 }
 #[derive(Debug, PartialEq)]
@@ -155,10 +157,14 @@ impl Sargs {
         };
 
         let mode = if arg.is_present("create") {
-            let dataset = dataset.expect(shavee_core::UNREACHABLE_CODE);
+            let dataset = Dataset {
+                dataset: dataset.expect(shavee_core::UNREACHABLE_CODE),
+            };
             Mode::Create { dataset }
         } else if arg.is_present("zset") {
-            let dataset = dataset.expect(shavee_core::UNREACHABLE_CODE);
+            let dataset = Dataset {
+                dataset: dataset.expect(shavee_core::UNREACHABLE_CODE),
+            };
             Mode::Mount { dataset }
         } else {
             Mode::Print
@@ -282,7 +288,9 @@ mod tests {
                 arg: vec!["-z", "zroot/test"], // -z zroot/test
                 result: Sargs {
                     mode: Mode::Mount {
-                        dataset: String::from("zroot/test"),
+                        dataset: Dataset {
+                            dataset: String::from("zroot/test"),
+                        },
                     },
                     umode: Umode::Password,
                 },
@@ -291,7 +299,9 @@ mod tests {
                 arg: vec!["-f", "./shavee", "-z", "zroot/test"], // -f ./shavee -z zroot/test
                 result: Sargs {
                     mode: Mode::Mount {
-                        dataset: String::from("zroot/test"),
+                        dataset: Dataset {
+                            dataset: String::from("zroot/test"),
+                        },
                     },
                     umode: Umode::File {
                         file: String::from("./shavee"),
@@ -304,7 +314,9 @@ mod tests {
                 arg: vec!["-c", "-z", "zroot/test"], // -c -z zroot/test
                 result: Sargs {
                     mode: Mode::Create {
-                        dataset: String::from("zroot/test"),
+                        dataset: Dataset {
+                            dataset: String::from("zroot/test"),
+                        },
                     },
                     umode: Umode::Password,
                 },
@@ -313,7 +325,9 @@ mod tests {
                 arg: vec!["--create", "--zset", "zroot/test/"], // --create --zset zroot/test/
                 result: Sargs {
                     mode: Mode::Create {
-                        dataset: String::from("zroot/test"),
+                        dataset: Dataset {
+                            dataset: String::from("zroot/test"),
+                        },
                     },
                     umode: Umode::Password,
                 },
@@ -322,7 +336,9 @@ mod tests {
                 arg: vec!["-y", "-s", "1", "-c", "-z", "zroot/test/"], // -y -s 1 -c -z zroot/test/
                 result: Sargs {
                     mode: Mode::Create {
-                        dataset: String::from("zroot/test"),
+                        dataset: Dataset {
+                            dataset: String::from("zroot/test"),
+                        },
                     },
                     umode: Umode::Yubikey { yslot: 1 },
                 },

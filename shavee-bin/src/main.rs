@@ -2,7 +2,7 @@ mod args;
 
 use args::{Mode, Sargs, Umode};
 use base64::encode_config;
-use shavee_core::{filehash::get_filehash, logic::*, password::hash_argon2, zfs::*};
+use shavee_core::{filehash::get_filehash, logic::*, password::hash_argon2};
 use std::error::Error;
 use std::process::exit;
 use std::thread;
@@ -22,6 +22,8 @@ fn main() {
     });
 }
 
+
+// TODO: Need integration test
 fn run(args: Sargs) -> Result<(), Box<dyn Error>> {
     // pre-initialize the handle and filehash and use them
     // if multithread is needed for file hash generation
@@ -62,12 +64,12 @@ fn run(args: Sargs) -> Result<(), Box<dyn Error>> {
     Ok(match args.umode {
         Umode::Yubikey { yslot } => match args.mode {
             Mode::Print => print_mode_yubi(pass, yslot)?,
-            Mode::Mount { dataset } => unlock_zfs_yubi(pass, Some(dataset), yslot)?,
+            Mode::Mount { dataset } => unlock_zfs_yubi(pass, dataset, yslot)?,
             Mode::Create { dataset } => create_zfs_yubi(pass, dataset, yslot)?,
         },
         Umode::File { .. } => match args.mode {
             Mode::Print => print_mode_file(pass, filehash)?,
-            Mode::Mount { dataset } => unlock_zfs_file(pass, filehash, Some(dataset))?,
+            Mode::Mount { dataset } => unlock_zfs_file(pass, filehash, dataset)?,
             Mode::Create { dataset } => create_zfs_file(pass, filehash, dataset)?,
         },
         Umode::Password => {
@@ -75,8 +77,8 @@ fn run(args: Sargs) -> Result<(), Box<dyn Error>> {
             let key = encode_config(key, base64::STANDARD_NO_PAD);
             match args.mode {
                 Mode::Print => println!("{}", key),
-                Mode::Mount { dataset } => unlock_zfs_pass(key, Some(dataset))?,
-                Mode::Create { dataset } => zfs_create(key, dataset)?,
+                Mode::Mount { dataset } => unlock_zfs_pass(key, dataset)?,
+                Mode::Create { dataset } => dataset.create(&key)?,
             }
         }
     })

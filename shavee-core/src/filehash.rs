@@ -12,9 +12,9 @@ pub fn get_filehash(
     size: Option<u64>,
 ) -> Result<Vec<u8>, Box<dyn Error>> {
     if file.starts_with("https://") || file.starts_with("http://") || file.starts_with("sftp://") {
-        get_filehash_http_sftp(file, port, size).map_err(|e| e.into())
+        get_filehash_http_sftp(file, port, size).map_err(Into::into)
     } else {
-        get_filehash_local(file, size).map_err(|e| e.into())
+        get_filehash_local(file, size).map_err(Into::into)
     }
 }
 

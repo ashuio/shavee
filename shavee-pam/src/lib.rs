@@ -13,6 +13,8 @@ use shavee_core::{
 };
 struct PamShavee;
 
+// TODO: Need unit tests implemented for the PAM module functions
+
 impl PamServiceModule for PamShavee {
     fn open_session(_: Pam, _: PamFlags, _: Vec<String>) -> PamError {
         PamError::SUCCESS
@@ -21,16 +23,17 @@ impl PamServiceModule for PamShavee {
     fn close_session(pam: Pam, _flags: PamFlags, args: Vec<String>) -> PamError {
         let (_umode, dataset, _pass) = match parse_pam_args(args, pam) {
             Ok(value) => value,
-            Err(e) => return e,
+            Err(error) => return error,
         };
 
-        match zfs_umount(dataset.clone()) {
-            Ok(()) => match zfs_unload_key(dataset.clone()) {
+        let zfs_dataset = Dataset { dataset };
+        match zfs_dataset.umount() {
+            Ok(()) => match zfs_dataset.unloadkey() {
                 Ok(()) => return PamError::SUCCESS,
                 Err(e) => {
                     eprintln!(
                         "Error in unloading ZFS dataset {} key: {}",
-                        dataset,
+                        zfs_dataset.dataset,
                         e.to_string()
                     );
                     return PamError::SESSION_ERR;
@@ -39,7 +42,7 @@ impl PamServiceModule for PamShavee {
             Err(e) => {
                 eprintln!(
                     "Error in unmounting user {} ZFS dataset: {}",
-                    dataset,
+                    zfs_dataset.dataset,
                     e.to_string()
                 );
                 return PamError::SESSION_ERR;
@@ -54,7 +57,7 @@ impl PamServiceModule for PamShavee {
         };
 
         let result = match umode {
-            args::Umode::Yubikey { yslot } => unlock_zfs_yubi(pass, Some(dataset), yslot),
+            args::Umode::Yubikey { yslot } => unlock_zfs_yubi(pass, Dataset { dataset }, yslot),
 
             args::Umode::File { file, port, size } => {
                 let filehash = match get_filehash(file, port, size) {
@@ -64,13 +67,13 @@ impl PamServiceModule for PamShavee {
                         return PamError::AUTHINFO_UNAVAIL;
                     }
                 };
-                unlock_zfs_file(pass, filehash, Some(dataset))
+                unlock_zfs_file(pass, filehash, Dataset { dataset })
             }
 
             args::Umode::Password => {
                 let key = hash_argon2(pass.into_bytes()).unwrap();
                 let key = encode_config(key, base64::STANDARD_NO_PAD);
-                unlock_zfs_pass(key, Some(dataset))
+                unlock_zfs_pass(key, Dataset { dataset })
             }
         };
 

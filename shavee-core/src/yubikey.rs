@@ -5,6 +5,7 @@ use std::ops::Deref;
 use yubico_manager::config::{Config, Mode, Slot};
 use yubico_manager::Yubico;
 
+// TODO: How to implement unit test for yubikey which requires human input?
 pub fn yubikey_get_hash(pass: String, slot: u8) -> Result<Vec<u8>, Box<dyn Error>> {
     let mut yubi = Yubico::new();
     // Search for Yubikey
