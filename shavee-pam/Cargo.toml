@@ -10,7 +10,7 @@ crate-type = ["cdylib"]
 name = "shavee_pam"
 
 [dependencies]
-pamsm = {version="0.5.0", features=["libpam"] }
+pamsm = { version="0.5.0", features=["libpam"] }
 shavee_core = {path = "../shavee-core"}
-clap = { version = "3.*" , features = ["cargo"] }
+clap = { version = "3", features = ["cargo"] }
 base64 = "0.13.0"

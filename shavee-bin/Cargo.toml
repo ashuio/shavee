@@ -14,7 +14,13 @@ repository = "https://github.com/ashuio/shavee"
 [dependencies]
 
 sha2 = "0.10.1"
-clap = { version = "3.*" , features = ["cargo"] }
+clap = { version = "3", features = ["cargo"] }
 rpassword = "5.0.1"
 base64 = "0.13.0"
 shavee_core = {path = "../shavee-core"}
+
+[dev-dependencies]
+stdio-override = "0"
+tempfile = "*"
+nix = "0"
+random-string = "1"

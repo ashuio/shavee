@@ -1,12 +1,9 @@
 //TODO (Issue #16): Implement clap_config() once it is ported to clap 3.0
 use clap::{crate_authors, crate_description, crate_name, crate_version, App, Arg};
-use shavee_core;
 use shavee_core::zfs::Dataset;
-use std::env;
-use std::ffi::OsString;
 
 #[derive(Debug, PartialEq)]
-pub enum Umode {
+pub enum TwoFactorMode {
     Yubikey {
         yslot: u8,
     },
@@ -19,18 +16,18 @@ pub enum Umode {
 }
 
 #[derive(Debug, PartialEq)]
-pub enum Mode {
+pub enum OperationMode {
     Create { dataset: Dataset },
     Mount { dataset: Dataset },
     Print,
 }
 #[derive(Debug, PartialEq)]
-pub struct Sargs {
-    pub mode: Mode,
-    pub umode: Umode,
+pub struct CliArgs {
+    pub operation: OperationMode,
+    pub second_factor: TwoFactorMode,
 }
 
-impl Sargs {
+impl CliArgs {
     // new() function calls new_from() to parse the arguments
     // using this method, it is possible to write unit tests for
     // valid and invalid arguments
@@ -44,7 +41,7 @@ impl Sargs {
     fn new_from<I, T>(args: I) -> Result<Self, clap::Error>
     where
         I: Iterator<Item = T>,
-        T: Into<OsString> + Clone,
+        T: Into<std::ffi::OsString> + Clone,
     {
         let cli_app = App::new(crate_name!())
             .about(crate_description!()) // Define APP and args
@@ -156,30 +153,29 @@ impl Sargs {
             None => 2,
         };
 
-        let mode = if arg.is_present("create") {
-            let dataset = Dataset {
-                dataset: dataset.expect(shavee_core::UNREACHABLE_CODE),
-            };
-            Mode::Create { dataset }
+        let operation = if arg.is_present("create") {
+            let dataset = Dataset::new(dataset.expect(shavee_core::UNREACHABLE_CODE))?;
+            OperationMode::Create { dataset }
         } else if arg.is_present("zset") {
-            let dataset = Dataset {
-                dataset: dataset.expect(shavee_core::UNREACHABLE_CODE),
-            };
-            Mode::Mount { dataset }
+            let dataset = Dataset::new(dataset.expect(shavee_core::UNREACHABLE_CODE))?;
+            OperationMode::Mount { dataset }
         } else {
-            Mode::Print
+            OperationMode::Print
         };
 
-        let umode = if arg.is_present("yubikey") {
-            Umode::Yubikey { yslot }
+        let second_factor = if arg.is_present("yubikey") {
+            TwoFactorMode::Yubikey { yslot }
         } else if arg.is_present("keyfile") {
             let file = file.expect(shavee_core::UNREACHABLE_CODE);
-            Umode::File { file, port, size }
+            TwoFactorMode::File { file, port, size }
         } else {
-            Umode::Password
+            TwoFactorMode::Password
         };
 
-        Ok(Sargs { mode, umode })
+        Ok(CliArgs {
+            operation,
+            second_factor,
+        })
     }
 }
 
@@ -194,45 +190,45 @@ mod tests {
         // and their output result
         struct ArgResultPair<'a> {
             arg: Vec<&'a str>,
-            result: Sargs,
+            result: CliArgs,
         }
 
         // each entry of the array holds the input/output struct
         let valid_arguments_results_pairs = [
             ArgResultPair {
                 arg: vec![], // no argument
-                result: Sargs {
-                    mode: Mode::Print,
-                    umode: Umode::Password,
+                result: CliArgs {
+                    operation: OperationMode::Print,
+                    second_factor: TwoFactorMode::Password,
                 },
             },
             ArgResultPair {
                 arg: vec!["-y"], // -y
-                result: Sargs {
-                    mode: Mode::Print,
-                    umode: Umode::Yubikey { yslot: 2 },
+                result: CliArgs {
+                    operation: OperationMode::Print,
+                    second_factor: TwoFactorMode::Yubikey { yslot: 2 },
                 },
             },
             ArgResultPair {
                 arg: vec!["-y", "-s", "1"], // -y -s 1
-                result: Sargs {
-                    mode: Mode::Print,
-                    umode: Umode::Yubikey { yslot: 1 },
+                result: CliArgs {
+                    operation: OperationMode::Print,
+                    second_factor: TwoFactorMode::Yubikey { yslot: 1 },
                 },
             },
             ArgResultPair {
                 arg: vec!["--yubi", "--slot", "2"], // --yubi --slot 2
-                result: Sargs {
-                    mode: Mode::Print,
-                    umode: Umode::Yubikey { yslot: 2 },
+                result: CliArgs {
+                    operation: OperationMode::Print,
+                    second_factor: TwoFactorMode::Yubikey { yslot: 2 },
                 },
             },
             ArgResultPair {
                 // test entry for size argument
                 arg: vec!["--file", "./shavee", "2048"], // --file ./shavee 2048
-                result: Sargs {
-                    mode: Mode::Print,
-                    umode: Umode::File {
+                result: CliArgs {
+                    operation: OperationMode::Print,
+                    second_factor: TwoFactorMode::File {
                         file: String::from("./shavee"),
                         port: None,
                         size: Some(2048),
@@ -242,9 +238,9 @@ mod tests {
             ArgResultPair {
                 // test entry for size argument
                 arg: vec!["--port", "80", "-f", "./shavee", "4096"], // --port 80 --file ./shavee 4096
-                result: Sargs {
-                    mode: Mode::Print,
-                    umode: Umode::File {
+                result: CliArgs {
+                    operation: OperationMode::Print,
+                    second_factor: TwoFactorMode::File {
                         file: String::from("./shavee"),
                         port: Some(80),
                         size: Some(4096),
@@ -253,9 +249,9 @@ mod tests {
             },
             ArgResultPair {
                 arg: vec!["--file", "./shavee"], // --file ./shavee
-                result: Sargs {
-                    mode: Mode::Print,
-                    umode: Umode::File {
+                result: CliArgs {
+                    operation: OperationMode::Print,
+                    second_factor: TwoFactorMode::File {
                         file: String::from("./shavee"),
                         port: None,
                         size: None,
@@ -264,9 +260,9 @@ mod tests {
             },
             ArgResultPair {
                 arg: vec!["--port", "80", "-f", "./shavee"], // --port 80 --file ./shavee
-                result: Sargs {
-                    mode: Mode::Print,
-                    umode: Umode::File {
+                result: CliArgs {
+                    operation: OperationMode::Print,
+                    second_factor: TwoFactorMode::File {
                         file: String::from("./shavee"),
                         port: Some(80),
                         size: None,
@@ -275,9 +271,9 @@ mod tests {
             },
             ArgResultPair {
                 arg: vec!["-P", "443", "-f", "./shavee"], // -P 443 --file ./shavee
-                result: Sargs {
-                    mode: Mode::Print,
-                    umode: Umode::File {
+                result: CliArgs {
+                    operation: OperationMode::Print,
+                    second_factor: TwoFactorMode::File {
                         file: String::from("./shavee"),
                         port: Some(443),
                         size: None,
@@ -286,24 +282,20 @@ mod tests {
             },
             ArgResultPair {
                 arg: vec!["-z", "zroot/test"], // -z zroot/test
-                result: Sargs {
-                    mode: Mode::Mount {
-                        dataset: Dataset {
-                            dataset: String::from("zroot/test"),
-                        },
+                result: CliArgs {
+                    operation: OperationMode::Mount {
+                        dataset: Dataset::new("zroot/test".to_string()).unwrap(),
                     },
-                    umode: Umode::Password,
+                    second_factor: TwoFactorMode::Password,
                 },
             },
             ArgResultPair {
                 arg: vec!["-f", "./shavee", "-z", "zroot/test"], // -f ./shavee -z zroot/test
-                result: Sargs {
-                    mode: Mode::Mount {
-                        dataset: Dataset {
-                            dataset: String::from("zroot/test"),
-                        },
+                result: CliArgs {
+                    operation: OperationMode::Mount {
+                        dataset: Dataset::new("zroot/test".to_string()).unwrap(),
                     },
-                    umode: Umode::File {
+                    second_factor: TwoFactorMode::File {
                         file: String::from("./shavee"),
                         port: None,
                         size: None,
@@ -312,35 +304,29 @@ mod tests {
             },
             ArgResultPair {
                 arg: vec!["-c", "-z", "zroot/test"], // -c -z zroot/test
-                result: Sargs {
-                    mode: Mode::Create {
-                        dataset: Dataset {
-                            dataset: String::from("zroot/test"),
-                        },
+                result: CliArgs {
+                    operation: OperationMode::Create {
+                        dataset: Dataset::new("zroot/test".to_string()).unwrap(),
                     },
-                    umode: Umode::Password,
+                    second_factor: TwoFactorMode::Password,
                 },
             },
             ArgResultPair {
                 arg: vec!["--create", "--zset", "zroot/test/"], // --create --zset zroot/test/
-                result: Sargs {
-                    mode: Mode::Create {
-                        dataset: Dataset {
-                            dataset: String::from("zroot/test"),
-                        },
+                result: CliArgs {
+                    operation: OperationMode::Create {
+                        dataset: Dataset::new("zroot/test".to_string()).unwrap(),
                     },
-                    umode: Umode::Password,
+                    second_factor: TwoFactorMode::Password,
                 },
             },
             ArgResultPair {
                 arg: vec!["-y", "-s", "1", "-c", "-z", "zroot/test/"], // -y -s 1 -c -z zroot/test/
-                result: Sargs {
-                    mode: Mode::Create {
-                        dataset: Dataset {
-                            dataset: String::from("zroot/test"),
-                        },
+                result: CliArgs {
+                    operation: OperationMode::Create {
+                        dataset: Dataset::new("zroot/test".to_string()).unwrap(),
                     },
-                    umode: Umode::Yubikey { yslot: 1 },
+                    second_factor: TwoFactorMode::Yubikey { yslot: 1 },
                 },
             },
         ];
@@ -351,7 +337,7 @@ mod tests {
             args.push(crate_name!());
             args.extend(valid_arguments_results_pairs[index].arg.clone());
             assert_eq!(
-                Sargs::new_from(args.iter()).unwrap(),
+                CliArgs::new_from(args.iter()).unwrap(),
                 valid_arguments_results_pairs[index].result
             );
         }
@@ -380,7 +366,7 @@ mod tests {
             //note: the first argument is always the executable name: crate_name!()
             args.push(crate_name!());
             args.extend(invalid_arguments[index].clone());
-            Sargs::new_from(args.iter()).unwrap_err();
+            CliArgs::new_from(args.iter()).unwrap_err();
         }
     }
 }

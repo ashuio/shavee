@@ -1,25 +1,43 @@
 use std::io::prelude::*;
 use std::process::Command;
 
-#[derive(Debug, PartialEq)]
+#[derive(Debug, PartialEq, Clone)]
 pub struct Dataset {
-    pub dataset: String,
+    dataset: String,
 }
-//TODO: Modify the trait function to return _Self_ to enable chain actoions: dataset.loadkey(passphrase).mount()
+
 impl Dataset {
-    pub fn mount(&self) -> Result<(), std::io::Error> {
-        Dataset::simple_subcommand(self, "mount")
+    pub fn new(dataset: String) -> Result<Self, std::io::Error> {
+        // first validate the correct ZFS naming requirements https://docs.oracle.com/cd/E26505_01/html/E37384/gbcpt.html
+
+        let is_dataset_name_valid = dataset
+            .chars()
+            // only contain alphanumeric characters and - . : _
+            .all(|c| matches!(c, 'A'..='Z' | 'a'..='z' | '0'..='9' | '_' | '-' | ':' | '.' | '/'));
+
+        let does_name_start_alphanumeric = dataset
+            .chars()
+            //  must begin with an alphanumeric character
+            .nth(0)
+            .expect(crate::UNREACHABLE_CODE)
+            .is_alphanumeric();
+
+        // return error if the string is not a valid for dataset name
+        if !(is_dataset_name_valid) || !(does_name_start_alphanumeric) {
+            return Err(std::io::Error::new(
+                std::io::ErrorKind::InvalidInput,
+                "ZFS Dataset name is not valid!",
+            ));
+        }
+        Ok(Self { dataset })
     }
 
-    pub fn umount(&self) -> Result<(), std::io::Error> {
-        Dataset::simple_subcommand(self, "umount")
+    // Convert the Dataset name to String
+    pub fn to_string(self) -> String {
+        self.dataset
     }
 
-    pub fn unloadkey(&self) -> Result<(), std::io::Error> {
-        Dataset::simple_subcommand(self, "unload-key")
-    }
-
-    pub fn loadkey(&self, passphrase: &str) -> std::io::Result<()> {
+    pub fn loadkey(&self, passphrase: &str) -> Result<Self, std::io::Error> {
         let mut zfs = Command::new("zfs") // Call zfs mount
             .arg("load-key")
             .arg("-L")
@@ -47,10 +65,10 @@ impl Dataset {
                 String::from_utf8(result.stderr).expect(crate::UNREACHABLE_CODE),
             ));
         }
-        Ok(())
+        Ok(self.clone())
     }
 
-    pub fn create(&self, passphrase: &str) -> std::io::Result<()> {
+    pub fn create(&self, passphrase: &str) -> Result<(), std::io::Error> {
         // check if dataset already exists
         match Dataset::list(&self) {
             // if it exists, then only change password
@@ -159,7 +177,20 @@ impl Dataset {
             .collect())
     }
 
-    fn simple_subcommand(&self, subcommand: &str) -> Result<(), std::io::Error> {
+    pub fn mount(&self) -> Result<(), std::io::Error> {
+        Dataset::simple_subcommand(self, "mount")?;
+        Ok(())
+    }
+
+    pub fn umount(&self) -> Result<Self, std::io::Error> {
+        Dataset::simple_subcommand(self, "umount")
+    }
+
+    pub fn unloadkey(&self) -> Result<Self, std::io::Error> {
+        Dataset::simple_subcommand(self, "unload-key")
+    }
+
+    fn simple_subcommand(&self, subcommand: &str) -> Result<Self, std::io::Error> {
         let command_output = Command::new("zfs")
             .arg(subcommand)
             .arg(&self.dataset)
@@ -172,7 +203,7 @@ impl Dataset {
                 String::from_utf8_lossy(&command_output.stderr).to_string(),
             ));
         };
-        Ok(())
+        Ok(self.clone())
     }
 }
 
@@ -181,6 +212,48 @@ mod tests {
     use super::*;
     use std::path::PathBuf;
 
+    #[test]
+    fn zfs_to_string_test() {
+        let dataset_name = String::from("dataset/test");
+        let dataset_struct = Dataset::new(dataset_name.clone()).unwrap();
+
+        assert_eq!(dataset_name, dataset_struct.to_string());
+    }
+
+    #[test]
+    fn zfs_name_validation() {
+        // check for invalid names
+        let invalid_names = [
+            String::from("_invalid"),
+            String::from("-invalid"),
+            String::from(":invalid"),
+            String::from(".invalid"),
+            String::from("inva%lid"),
+        ];
+        for invalid_name in invalid_names {
+            let error = Dataset::new(invalid_name).unwrap_err();
+            assert_eq!(error.kind(), std::io::ErrorKind::InvalidInput);
+        }
+
+        // check for valid names
+        let valid_names = [
+            String::from("valid"),
+            String::from("v8lid"),
+            String::from("val:id"),
+            String::from("val.id"),
+            String::from("Val1d"),
+            String::from("Val1d/data5et"),
+        ];
+        for valid_name in valid_names {
+            let zfs_dataset = Dataset::new(valid_name.clone()).unwrap();
+            assert_eq!(
+                zfs_dataset,
+                Dataset {
+                    dataset: valid_name
+                }
+            );
+        }
+    }
     #[test]
     fn zfs_mount_umount_test() {
         // generate a temp zpool
