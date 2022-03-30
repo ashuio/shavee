@@ -2,7 +2,7 @@
 use clap::{crate_authors, crate_description, crate_name, crate_version, App, Arg};
 use shavee_core::zfs::Dataset;
 
-#[derive(Debug, PartialEq)]
+#[derive(Debug, Clone, PartialEq)]
 pub enum TwoFactorMode {
     Yubikey {
         yslot: u8,
@@ -15,13 +15,13 @@ pub enum TwoFactorMode {
     Password,
 }
 
-#[derive(Debug, PartialEq)]
+#[derive(Debug,Clone, PartialEq)]
 pub enum OperationMode {
     Create { dataset: Dataset },
     Mount { dataset: Dataset },
     Print,
 }
-#[derive(Debug, PartialEq)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct CliArgs {
     pub operation: OperationMode,
     pub second_factor: TwoFactorMode,
