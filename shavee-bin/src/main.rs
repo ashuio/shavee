@@ -225,6 +225,7 @@ mod tests {
             //Output of the Integration test will be stored in these variables to be validated
             let create_password_output;
             let mount_password_output;
+            let mount_key_already_loaded_output;
 
             // **Integration Test**: create a new encrypted dataset from file
             {
@@ -299,19 +300,25 @@ mod tests {
                 let stdin_guard = stdio_override::StdinOverride::override_file(password_file_path);
 
                 // **Integration Test** run() function and capture its stdout output
-                mount_password_output = run(mount_password);
+                mount_password_output = run(mount_password.clone());
+
+                //umount the ZFS only
+                zfs_encrypted_dataset
+                    .umount()
+                    .expect("ZFS Dataset Mount from file Integration test failed!");
+
+                // [Issue #22] try to mount again this time with key already loaded
+                mount_key_already_loaded_output = run(mount_password);
+
+                // unload the ZFS key
+                zfs_encrypted_dataset
+                    .unloadkey()
+                    .expect("ZFS Dataset unload key failed!");
 
                 // release stdin back to normal
                 drop(stdin_guard);
                 //clean up the temp files
                 drop(password_file_path);
-
-                //umount and unload the ZFS key
-                zfs_encrypted_dataset
-                    .umount()
-                    .expect("ZFS Dataset create from file Integration test failed!")
-                    .unloadkey()
-                    .expect("ZFS Dataset create from file Integration test failed!");
             } // END of **Integration Test**: mount an encrypted dataset from password
 
             //clean up and remove the dataset folder
@@ -325,9 +332,20 @@ mod tests {
             let mount_output = mount_password_output
                 .expect("ZFS Dataset mount from Password Integration test failed!");
 
+            let key_already_loaded_output = mount_key_already_loaded_output
+                .expect_err("ZFS Dataset mount on an already loaded key Integration test failed!")
+                .to_string();
+
             // **Integration Test** verify stdout with the expected result
             assert_eq!(create_output, None);
             assert_eq!(mount_output, None);
+            assert_eq!(
+                key_already_loaded_output,
+                format!(
+                    "Key load error: Key already loaded for '{}'.\n",
+                    zfs_encrypted_dataset.to_string()
+                )
+            );
         } //END  **Integration Test**: Create from File then mount it
 
         // **Integration Test**: Create from File then mount it
