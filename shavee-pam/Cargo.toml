@@ -1,7 +1,7 @@
 [package]
 name = "shavee_pam"
 authors = ["Ashutosh Verma <shavee@ashu.io>"]
-version = "0.1.0"
+version = "0.5.0"
 edition = "2018"
 license = "MIT"
 
@@ -10,8 +10,7 @@ crate-type = ["cdylib"]
 name = "shavee_pam"
 
 [dependencies]
-pamsm = {version="0.5.0", features=["libpam"] }
+pamsm = { version="0.5.0", features=["libpam"] }
 shavee_core = {path = "../shavee-core"}
-clap = "2.33.3"
+clap = { version = "3", features = ["cargo"] }
 base64 = "0.13.0"
-

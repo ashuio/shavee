@@ -1,15 +1,13 @@
-use crate::password::hash_argon2;
 use sha2::{Digest, Sha512};
-use std::error::Error;
 use std::ops::Deref;
 use yubico_manager::config::{Config, Mode, Slot};
 use yubico_manager::Yubico;
 
-pub fn yubikey_get_hash(pass: String, slot: u8) -> Result<Vec<u8>, Box<dyn Error>> {
+pub fn yubikey_get_hash(pass: String, slot: u8) -> Result<Vec<u8>, Box<dyn std::error::Error>> {
     let mut yubi = Yubico::new();
     // Search for Yubikey
     Ok(if let Ok(device) = yubi.find_yubikey() {
-        let challenge = hash_argon2(pass.into_bytes())?; // Prepare Challenge
+        let challenge = crate::password::hash_argon2(pass.into_bytes())?; // Prepare Challenge
         let yslot = if slot == 1 { Slot::Slot1 } else { Slot::Slot2 };
 
         let config = Config::default() // Configure Yubikey
@@ -29,3 +27,5 @@ pub fn yubikey_get_hash(pass: String, slot: u8) -> Result<Vec<u8>, Box<dyn Error
         return Err("Yubikey not found".to_string().into());
     })
 }
+
+// TODO: How to implement unit test for yubikey which requires human input?

@@ -1,6 +1,5 @@
 use curl;
 use sha2::{Digest, Sha512};
-use std::error::Error;
 use std::io::{self, BufRead, BufReader};
 
 // max capacity must be a u32 number to be safely casted into usize independent of 32/64bit systems
@@ -10,11 +9,11 @@ pub fn get_filehash(
     file: String,
     port: Option<u16>,
     size: Option<u64>,
-) -> Result<Vec<u8>, Box<dyn Error>> {
+) -> Result<Vec<u8>, Box<dyn std::error::Error>> {
     if file.starts_with("https://") || file.starts_with("http://") || file.starts_with("sftp://") {
-        get_filehash_http_sftp(file, port, size).map_err(|e| e.into())
+        get_filehash_http_sftp(file, port, size).map_err(Into::into)
     } else {
-        get_filehash_local(file, size).map_err(|e| e.into())
+        get_filehash_local(file, size).map_err(Into::into)
     }
 }
 
@@ -115,6 +114,11 @@ mod tests {
 
     #[test]
     fn local_file_hash() {
+        // Check for root permission and exit early
+        if nix::unistd::Uid::effective().is_root() {
+            panic!("Test must not run under Root permission! Test terminated early!");
+        }
+
         // defining a struct that will hold intput arguments
         // and their output hash results
         // need to use io::ErrorKind (instead of io:Error) which supports PartialEq
@@ -297,6 +301,13 @@ mod tests {
                 ),
             };
         }
+
+        // clean up to delete the temp folder
+        std::process::Command::new("rm")
+            .arg("-rf")
+            .arg(temp_folder)
+            .spawn()
+            .expect("Temp folder clean up failed!");
     }
 
     #[test]
@@ -441,6 +452,11 @@ mod tests {
 
     #[test]
     fn get_filehash_unit_test() {
+        // Check for root permission and exit early
+        if nix::unistd::Uid::effective().is_root() {
+            panic!("Test must not run under Root permission! Test terminated early!");
+        }
+
         // defining a struct that will hold intput arguments
         // port number for remote files (it will be ignored for local files)
         // and their output hash results
@@ -493,7 +509,7 @@ mod tests {
                 file: String::from(
                     "https://raw.githubusercontent.com/ashuio/shavee/master/LICENSE",
                 ),
-                size: Some(1<<11),
+                size: Some(1 << 11),
                 port: None,
                 hash_result: Ok(vec![
                     114, 198, 213, 139, 67, 213, 120, 43, 163, 13, 255, 110, 191, 190, 203, 251,
@@ -519,7 +535,7 @@ mod tests {
                 file: String::from(
                     "http://www.w3.org/WAI/ER/tests/xhtml/testfiles/resources/pdf/dummy.pdf",
                 ),
-                size: Some(1<<15),
+                size: Some(1 << 15),
                 port: Some(80),
                 hash_result: Ok(vec![
                     243, 179, 171, 62, 99, 81, 226, 91, 92, 24, 130, 190, 168, 211, 126, 250, 221,
@@ -532,7 +548,7 @@ mod tests {
                 file: String::from(
                     "https://raw.githubusercontent.com/ashuio/shavee/master/LICENSEEEE",
                 ), //file doesn't exists
-                size: Some(1<<10),
+                size: Some(1 << 10),
                 port: None,
                 hash_result: Err(curl::Error::new(22).to_string()), //CURLE_HTTP_RETURNED_ERROR
             },
@@ -540,7 +556,7 @@ mod tests {
                 file: String::from(
                     "https://www.w3.org/WAI/ER/tests/xhtml/testfiles/resources/pdf/dummy.pdf",
                 ),
-                size: Some(1<<16),
+                size: Some(1 << 16),
                 port: Some(80), //Wrong port for SSL
                 hash_result: Err(curl::Error::new(35).to_string()), //CURLE_SSL_CONNECT_ERROR
             },
@@ -554,8 +570,8 @@ mod tests {
                 file: String::from(
                     "http://www.w3.org/WAI/ER/tests/xhtml/testfiles/resources/pdf/dummy.pdf",
                 ),
-                size: Some(200 * 1<<10), //200kB
-                port: Some(23), //FTP port used for HTTP
+                size: Some(200 * 1 << 10),                          //200kB
+                port: Some(23),                                     //FTP port used for HTTP
                 hash_result: Err(curl::Error::new(28).to_string()), //CURLE_HTTP_RETURNED_ERROR
             },
         ];
@@ -628,5 +644,12 @@ mod tests {
                 }
             };
         }
+
+        // clean up to delete the temp folder
+        std::process::Command::new("rm")
+            .arg("-rf")
+            .arg(temp_folder)
+            .spawn()
+            .expect("Temp folder clean up failed!");
     }
 }
