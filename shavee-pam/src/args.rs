@@ -3,9 +3,11 @@ use shavee_core;
 
 #[derive(Debug, PartialEq)]
 pub enum TwoFactorMode {
+    #[cfg(feature = "yubikey")]
     Yubikey {
         yslot: u8,
     },
+    #[cfg(feature = "file")]
     File {
         file: String,
         port: Option<u16>,
@@ -35,6 +37,7 @@ impl PamArgs {
                 .help("Use Yubikey HMAC as second factor")
                 .required(false)
                 .takes_value(false)
+                .hide(!cfg!(feature = "yubikey")) // hide it in help if feature is disabled
                 .conflicts_with("keyfile"), // yubikey xor keyfile, not both. 
         )
         .arg(
@@ -46,6 +49,7 @@ impl PamArgs {
                 .value_name("HMAC slot")
                 .possible_values(&["1", "2"])   // putting limit on acceptable inputs
                 .required(false)
+                .hide(!cfg!(feature = "yubikey")) // hide it in help if feature is disabled
                 .requires("yubikey"),   // it must be accompanied by yubikey option
         )
         .arg(
@@ -56,6 +60,7 @@ impl PamArgs {
                 If SIZE is entered, the first SIZE in bytes will be used to generate hash. It must be number between \
                 1 and 2^(64).")
                 .required(false)
+                .hide(!cfg!(feature = "file")) // hide it in help if feature is disabled
                 .takes_value(true)
                 .value_name("FILE|ADDRESS [SIZE]")
                 .max_values(2)
@@ -68,6 +73,7 @@ impl PamArgs {
                 .takes_value(true)
                 .value_name("port number")
                 .required(false)
+                .hide(!cfg!(feature = "file")) // hide it in help if feature is disabled
                 .requires("keyfile")    // port must be accompanied by keyfile option
                 .validator(shavee_core::port_check)  // validate that port parameter is "valid"
                 .help("Set port for HTTP(S) and SFTP requests"),
@@ -92,6 +98,7 @@ impl PamArgs {
 
         // check for keyfile argument if parse them if needed.
         // otherwise fill them with None
+        #[cfg(feature = "file")]
         let (file, size) = match arg.values_of("keyfile") {
             Some(values) => {
                 // convert the values to a vector
@@ -121,25 +128,51 @@ impl PamArgs {
         };
 
         // The port arguments are <u16> or None (not entered by user)
+        #[cfg(feature = "file")]
         let port = arg
             .value_of("port")
             .map(|p| p.parse::<u16>().expect(shavee_core::UNREACHABLE_CODE));
 
         // The accepted slot arguments are Some (1 or 2) or None (not entered by user)
         // Default value if not entered is 2
+        #[cfg(feature = "yubikey")]
         let yslot = match arg.value_of("slot") {
             // exceptions should not happen, because the entry is already validated by clap
             Some(s) => s.parse::<u8>().expect(shavee_core::UNREACHABLE_CODE),
             None => 2,
         };
 
-        let second_factor = if arg.is_present("yubikey") {
-            TwoFactorMode::Yubikey { yslot }
-        } else if arg.is_present("keyfile") {
-            let file = file.expect(shavee_core::UNREACHABLE_CODE);
-            TwoFactorMode::File { file, port, size }
-        } else {
-            TwoFactorMode::Password
+        // The default mode is Password.
+        #[allow(unused_mut)]
+        let mut second_factor = TwoFactorMode::Password;
+
+        // if yubikey feature is enabled, check for Yubikey 2FA mode.
+        if arg.is_present("yubikey") {
+            if !cfg!(feature = "yubikey") {
+                return Err(clap::Error::raw(
+                    clap::ErrorKind::ArgumentNotFound,
+                    "Yubikey feature is disabled at compile.",
+                ));
+            }
+            #[cfg(feature = "yubikey")]
+            {
+                second_factor = TwoFactorMode::Yubikey { yslot };
+            }
+        };
+
+        // if file feature is enabled, check for file 2FA mode
+        if arg.is_present("keyfile") {
+            if !cfg!(feature = "file") {
+                return Err(clap::Error::raw(
+                    clap::ErrorKind::ArgumentNotFound,
+                    "File 2FA feature is disabled at compile.",
+                ));
+            }
+            #[cfg(feature = "file")]
+            {
+                let file = file.expect(shavee_core::UNREACHABLE_CODE);
+                second_factor = TwoFactorMode::File { file, port, size };
+            }
         };
 
         Ok(PamArgs {
@@ -170,6 +203,7 @@ mod tests {
                     second_factor: TwoFactorMode::Password,
                 },
             },
+            #[cfg(feature = "yubikey")]
             ArgResultPair {
                 arg: vec!["-y", "-z", "zroot/test"], // -z zroot/test
                 result: PamArgs {
@@ -177,6 +211,7 @@ mod tests {
                     second_factor: TwoFactorMode::Yubikey { yslot: 2 },
                 },
             },
+            #[cfg(feature = "yubikey")]
             ArgResultPair {
                 arg: vec!["-y", "-s", "1", "-z", "zroot/test"], // -z zroot/test
                 result: PamArgs {
@@ -184,6 +219,7 @@ mod tests {
                     second_factor: TwoFactorMode::Yubikey { yslot: 1 },
                 },
             },
+            #[cfg(feature = "file")]
             ArgResultPair {
                 arg: vec!["-f", "./shavee", "-z", "zroot/test"], // -f ./shavee -z zroot/test
                 result: PamArgs {
@@ -195,6 +231,7 @@ mod tests {
                     },
                 },
             },
+            #[cfg(feature = "file")]
             ArgResultPair {
                 arg: vec!["--port", "80", "-f", "./shavee", "4096", "-z", "zroot/test"], // -f ./shavee -z zroot/test
                 result: PamArgs {
@@ -221,26 +258,61 @@ mod tests {
 
         // For the invalid arguments, there is no output struct and we only check for errors
         let invalid_arguments = [
-            vec![""],                           // empty
-            vec!["-s"],                         // -s
-            vec!["--slot"],                     // --slot
-            vec!["--slot", "2"],                // --slot 2
-            vec!["-y", "-s", "3"],              // -y -s 3
-            vec!["--file"],                     // --file
-            vec!["-f"],                         // -f
-            vec!["-y", "-f", "./shavee"],       // -y -f ./shavee
-            vec!["-z"],                         // -z
-            vec!["--zset"],                     // --zset
-            vec!["--port", "80"],               // --port 80
-            vec!["-P"],                         // -P
-            vec!["-P", "0", "-f", "./shavee"],  // -P 0 -f ./shavee
-            vec!["-c"],                         // -c
-            vec!["--create"],                   // --create
-            vec!["--yubi"],                     // --yubi
-            vec!["-y", "-s", "1"],              // -y -s 1
+            vec![""],         // empty
+            vec!["-c"],       // -c
+            vec!["--create"], // --create
+            vec!["-z"],       // -z
+            vec!["--zset"],   // --zset
+            #[cfg(feature = "yubikey")]
+            vec!["-s"], // -s
+            #[cfg(feature = "yubikey")]
+            vec!["--slot"], // --slot
+            #[cfg(feature = "yubikey")]
+            vec!["--slot", "2"], // --slot 2
+            #[cfg(feature = "yubikey")]
+            vec!["-y", "-s", "3"], // -y -s 3
+            #[cfg(feature = "yubikey")]
+            vec!["--yubi"], // --yubi
+            #[cfg(feature = "yubikey")]
+            vec!["-y", "-s", "1"], // -y -s 1
+            #[cfg(feature = "file")]
+            vec!["--file"], // --file
+            #[cfg(feature = "file")]
+            vec!["-f"], // -f
+            #[cfg(feature = "file")]
+            vec!["--port", "80"], // --port 80
+            #[cfg(feature = "file")]
+            vec!["-P"], // -P
+            #[cfg(feature = "file")]
+            vec!["-P", "0", "-f", "./shavee"], // -P 0 -f ./shavee
+            #[cfg(feature = "file")]
             vec!["--file", "./shavee", "2048"], // --file ./shavee 2048
+            #[cfg(feature = "file")]
             vec!["--file", "./shavee"], // --file ./shavee
+            #[cfg(feature = "file")]
             vec!["--port", "80", "-f", "./shavee", "4096"], // --port 80 --file ./shavee 4096
+            #[cfg(any(feature = "file", feature = "yubikey"))]
+            vec!["-y", "-f", "./shavee"], // -y -f ./shavee
+            // The following tests that error is returned when yubikey 2fa is disabled at compile
+            #[cfg(not(feature = "yubikey"))]
+            vec!["-y"], // -y
+            #[cfg(not(feature = "yubikey"))]
+            vec!["-y", "-s", "1"], // -y -s 1
+            #[cfg(not(feature = "yubikey"))]
+            vec!["--yubi", "--slot", "2"], // --yubi --slot 2
+            // The following tests that error is returned when file 2fa is disabled at compile
+            #[cfg(not(feature = "file"))]
+            vec!["--file", "./shavee", "2048"], // --file ./shavee 2048
+            #[cfg(not(feature = "file"))]
+            vec!["--port", "80", "-f", "./shavee", "4096"], // --port 80 --file ./shavee 4096
+            #[cfg(not(feature = "file"))]
+            vec!["--file", "./shavee"], // --file ./shavee
+            #[cfg(not(feature = "file"))]
+            vec!["--port", "80", "-f", "./shavee"], // --port 80 --file ./shavee
+            #[cfg(not(feature = "file"))]
+            vec!["-P", "443", "-f", "./shavee"], // -P 443 --file ./shavee
+            #[cfg(not(feature = "file"))]
+            vec!["-f", "./shavee", "-z", "zroot/test"], // -f ./shavee -z zroot/test
         ];
 
         for index in 0..invalid_arguments.len() {

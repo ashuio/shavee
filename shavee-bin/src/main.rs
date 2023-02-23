@@ -2,7 +2,12 @@ mod args;
 
 use args::*;
 use base64;
-use shavee_core::{filehash, logic, password};
+#[cfg(feature = "file")]
+use shavee_core::filehash;
+#[cfg(any(feature = "yubikey", feature = "file"))]
+use shavee_core::logic;
+use shavee_core::password;
+#[cfg(feature = "file")]
 use std::thread;
 
 // main() collect the arguments from command line, pass them to run() and print any
@@ -30,12 +35,16 @@ fn run(args: CliArgs) -> Result<Option<String>, Box<dyn std::error::Error>> {
     // if multithread is needed for file hash generation
     // if multithread file hash code is not called then handle must not be used
     // thus initializing it with an error message.
+    #[cfg(feature = "file")]
     let mut handle: thread::JoinHandle<Result<Vec<u8>, String>> =
         thread::spawn(|| Err(String::from(shavee_core::UNREACHABLE_CODE)));
+
+    #[cfg(feature = "file")]
     let mut filehash: Vec<u8> = vec![]; //empty u8 vector
 
     // if in the file 2FA mode, then generate file hash in parallel
     // while user is entering password
+    #[cfg(feature = "file")]
     if let TwoFactorMode::File {
         ref file,
         ref port,
@@ -46,7 +55,8 @@ fn run(args: CliArgs) -> Result<Option<String>, Box<dyn std::error::Error>> {
         let file = file.clone();
         // start the file hash thread
         handle = thread::spawn(move || {
-            filehash::get_filehash(file, port, size).map_err(|e| e.to_string()) // map error to String
+            filehash::get_filehash(file, port, size).map_err(|e| e.to_string())
+            // map error to String
         });
     };
 
@@ -58,6 +68,7 @@ fn run(args: CliArgs) -> Result<Option<String>, Box<dyn std::error::Error>> {
     // if in the file 2FA mode, then wait for hash generation thread to finish
     // and unwrap the result. In case of an error, terminate this function and
     // return error to main().
+    #[cfg(feature = "file")]
     if let TwoFactorMode::File { .. } = args.second_factor {
         filehash = handle.join().unwrap()?;
     };
@@ -66,7 +77,9 @@ fn run(args: CliArgs) -> Result<Option<String>, Box<dyn std::error::Error>> {
     let exit_result: Option<String> = match args.operation {
         OperationMode::Create { dataset } => {
             match args.second_factor {
+                #[cfg(feature = "yubikey")]
                 TwoFactorMode::Yubikey { yslot } => dataset.yubi_create(password, yslot)?,
+                #[cfg(feature = "file")]
                 TwoFactorMode::File { .. } => dataset.file_create(password, filehash)?,
                 TwoFactorMode::Password => dataset.create(&password_mode_hash(&password)?)?,
             };
@@ -74,14 +87,18 @@ fn run(args: CliArgs) -> Result<Option<String>, Box<dyn std::error::Error>> {
         }
         OperationMode::Mount { dataset } => {
             match args.second_factor {
+                #[cfg(feature = "yubikey")]
                 TwoFactorMode::Yubikey { yslot } => dataset.yubi_unlock(password, yslot)?,
+                #[cfg(feature = "file")]
                 TwoFactorMode::File { .. } => dataset.file_unlock(password, filehash)?,
                 TwoFactorMode::Password => dataset.pass_unlock(password_mode_hash(&password)?)?,
             };
             None
         }
         OperationMode::Print => Some(match args.second_factor {
+            #[cfg(feature = "yubikey")]
             TwoFactorMode::Yubikey { yslot } => logic::yubi_key_calculation(password, yslot)?,
+            #[cfg(feature = "file")]
             TwoFactorMode::File { .. } => logic::file_key_calculation(password, filehash)?,
             TwoFactorMode::Password => password_mode_hash(&password)?,
         }),
@@ -165,6 +182,7 @@ mod tests {
         } // END **Integration Test**: Print Password
 
         // **Integration Test**: Print File
+        #[cfg(feature = "file")]
         {
             // construct the needed Struct related to this unit test
             let print_file = CliArgs {
@@ -349,6 +367,7 @@ mod tests {
         } //END  **Integration Test**: Create from File then mount it
 
         // **Integration Test**: Create from File then mount it
+        #[cfg(feature = "file")]
         {
             let (zpool_name, temp_folder) = prepare_zpool();
 
@@ -495,7 +514,7 @@ mod tests {
         // For ZFS related unit tests need root permission
         // Check for root permission and exit early
         if !nix::unistd::Uid::effective().is_root() {
-            panic!("Root permission is needed! Test terminated early!");
+            panic!("Root permission is needed for integration tests! Tests terminated early!");
         }
 
         // Check for ZFS tools and exit early

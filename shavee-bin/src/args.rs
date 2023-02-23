@@ -4,9 +4,11 @@ use shavee_core::zfs::Dataset;
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum TwoFactorMode {
+    #[cfg(feature = "yubikey")]
     Yubikey {
         yslot: u8,
     },
+    #[cfg(feature = "file")]
     File {
         file: String,
         port: Option<u16>,
@@ -15,7 +17,7 @@ pub enum TwoFactorMode {
     Password,
 }
 
-#[derive(Debug,Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq)]
 pub enum OperationMode {
     Create { dataset: Dataset },
     Mount { dataset: Dataset },
@@ -48,39 +50,6 @@ impl CliArgs {
             .author(crate_authors!())
             .version(crate_version!())
             .arg(
-                Arg::new("yubikey")
-                    .long("yubi")
-                    .short('y')
-                    .help("Use Yubikey HMAC as second factor")
-                    .required(false)
-                    .takes_value(false)
-                    .conflicts_with("keyfile"), // yubikey xor keyfile, not both. 
-            )
-            .arg(
-                Arg::new("slot")
-                    .short('s')
-                    .long("slot")
-                    .help("Yubikey HMAC Slot")
-                    .takes_value(true)
-                    .value_name("HMAC slot")
-                    .possible_values(&["1", "2"])   // putting limit on acceptable inputs
-                    .required(false)
-                    .requires("yubikey"),   // it must be accompanied by yubikey option
-            )
-            .arg(
-                Arg::new("keyfile")
-                    .short('f')
-                    .long("file")
-                    .help("Use any file as second factor, takes filepath, SFTP or a HTTP(S) location as an argument. \
-                    If SIZE is entered, the first SIZE in bytes will be used to generate hash. It must be number between \
-                    1 and 2^(64).")
-                    .required(false)
-                    .takes_value(true)
-                    .value_name("FILE|ADDRESS [SIZE]")
-                    .max_values(2)
-                    .conflicts_with("yubikey"), // keyfile xor yubikey, not both.
-            )
-            .arg(
                 Arg::new("create")
                     .short('c')
                     .long("create")
@@ -89,17 +58,6 @@ impl CliArgs {
                     .requires("zset")
                     .next_line_help(true)   // long help description will be printed in the next line
                     .help("Create/Change key of a ZFS dataset with the derived encryption key. Must be used with --zset"),
-            )
-            .arg(
-                Arg::new("port")
-                    .short('P')
-                    .long("port")
-                    .takes_value(true)
-                    .value_name("port number")
-                    .required(false)
-                    .requires("keyfile")    // port must be accompanied by keyfile option
-                    .validator(shavee_core::port_check)  // validate that port parameter is "valid"
-                    .help("Set port for HTTP(S) and SFTP requests"),
             )
             .arg(
                 Arg::new("zset")
@@ -112,13 +70,63 @@ impl CliArgs {
                     .help("ZFS Dataset eg. \"zroot/data/home\"\n\
                     If present in conjunction with any of the other options, it will try to unlock and mount the \
                     given dataset with the derived key instead of printing it. Takes zfs dataset path as argument."),
+            )
+            .arg(
+                Arg::new("yubikey")
+                    .long("yubi")
+                    .short('y')
+                    .help("Use Yubikey HMAC as second factor")
+                    .required(false)
+                    .takes_value(false)
+                    .hide(!cfg!(feature = "yubikey")) // hide it in help if feature is disabled
+                    .conflicts_with("keyfile"), // yubikey xor keyfile, not both.
+            )
+            .arg(
+                Arg::new("slot")
+                    .short('s')
+                    .long("slot")
+                    .help("Yubikey HMAC Slot")
+                    .takes_value(true)
+                    .value_name("HMAC slot")
+                    .possible_values(&["1", "2"]) // putting limit on acceptable inputs
+                    .hide(!cfg!(feature = "yubikey")) // hide it in help if feature is disabled
+                    .required(false)
+                    .requires("yubikey"), // it must be accompanied by yubikey option
+            )
+            .arg(
+                Arg::new("keyfile")
+                    .short('f')
+                    .long("file")
+                    .help("Use any file as second factor, takes filepath, SFTP or a HTTP(S) location as an argument. \
+                    If SIZE is entered, the first SIZE in bytes will be used to generate hash. It must be number between \
+                    1 and 2^(64).")
+                    .hide(!cfg!(feature = "file")) // hide it in help if feature is disabled
+                    .required(false)
+                    .takes_value(true)
+                    .value_name("FILE|ADDRESS [SIZE]")
+                    .max_values(2)
+                    .conflicts_with("yubikey"), // keyfile xor yubikey, not both.
+            )
+            .arg(
+                Arg::new("port")
+                    .short('P')
+                    .long("port")
+                    .takes_value(true)
+                    .value_name("port number")
+                    .hide(!cfg!(feature = "file"))  // hide it in help if feature is disabled
+                    .required(false)
+                    .requires("keyfile")    // port must be accompanied by keyfile option
+                    .validator(shavee_core::port_check)  // validate that port parameter is "valid"
+                    .help("Set port for HTTP(S) and SFTP requests"),
             );
+
         // in order to be able to write unit tests, getting the arg matches
         // shouldn't cause new_from() to exit or panic.
         let arg = cli_app.try_get_matches_from(args)?;
 
         // check for keyfile argument if parse them if needed.
         // otherwise fill them with None
+        #[cfg(feature = "file")]
         let (file, size) = match arg.values_of("keyfile") {
             Some(values) => {
                 // convert the values to a vector
@@ -141,12 +149,14 @@ impl CliArgs {
         };
 
         // The port arguments are <u16> or None (not entered by user)
+        #[cfg(feature = "file")]
         let port = arg
             .value_of("port")
             .map(|p| p.parse::<u16>().expect(shavee_core::UNREACHABLE_CODE));
 
         // The accepted slot arguments are Some (1 or 2) or None (not entered by user)
         // Default value if not entered is 2
+        #[cfg(feature = "yubikey")]
         let yslot = match arg.value_of("slot") {
             // exceptions should not happen, because the entry is already validated by clap
             Some(s) => s.parse::<u8>().expect(shavee_core::UNREACHABLE_CODE),
@@ -163,13 +173,37 @@ impl CliArgs {
             OperationMode::Print
         };
 
-        let second_factor = if arg.is_present("yubikey") {
-            TwoFactorMode::Yubikey { yslot }
-        } else if arg.is_present("keyfile") {
-            let file = file.expect(shavee_core::UNREACHABLE_CODE);
-            TwoFactorMode::File { file, port, size }
-        } else {
-            TwoFactorMode::Password
+        // The default mode is Password.
+        #[allow(unused_mut)]
+        let mut second_factor = TwoFactorMode::Password;
+
+        // if yubikey feature is enabled, check for Yubikey 2FA mode.
+        if arg.is_present("yubikey") {
+            if !cfg!(feature = "yubikey") {
+                return Err(clap::Error::raw(
+                    clap::ErrorKind::ArgumentNotFound,
+                    "Yubikey feature is disabled at compile.",
+                ));
+            }
+            #[cfg(feature = "yubikey")]
+            {
+                second_factor = TwoFactorMode::Yubikey { yslot };
+            }
+        };
+
+        // if file feature is enabled, check for file 2FA mode
+        if arg.is_present("keyfile") {
+            if !cfg!(feature = "file") {
+                return Err(clap::Error::raw(
+                    clap::ErrorKind::ArgumentNotFound,
+                    "File 2FA feature is disabled at compile.",
+                ));
+            }
+            #[cfg(feature = "file")]
+            {
+                let file = file.expect(shavee_core::UNREACHABLE_CODE);
+                second_factor = TwoFactorMode::File { file, port, size };
+            }
         };
 
         Ok(CliArgs {
@@ -203,103 +237,12 @@ mod tests {
                 },
             },
             ArgResultPair {
-                arg: vec!["-y"], // -y
-                result: CliArgs {
-                    operation: OperationMode::Print,
-                    second_factor: TwoFactorMode::Yubikey { yslot: 2 },
-                },
-            },
-            ArgResultPair {
-                arg: vec!["-y", "-s", "1"], // -y -s 1
-                result: CliArgs {
-                    operation: OperationMode::Print,
-                    second_factor: TwoFactorMode::Yubikey { yslot: 1 },
-                },
-            },
-            ArgResultPair {
-                arg: vec!["--yubi", "--slot", "2"], // --yubi --slot 2
-                result: CliArgs {
-                    operation: OperationMode::Print,
-                    second_factor: TwoFactorMode::Yubikey { yslot: 2 },
-                },
-            },
-            ArgResultPair {
-                // test entry for size argument
-                arg: vec!["--file", "./shavee", "2048"], // --file ./shavee 2048
-                result: CliArgs {
-                    operation: OperationMode::Print,
-                    second_factor: TwoFactorMode::File {
-                        file: String::from("./shavee"),
-                        port: None,
-                        size: Some(2048),
-                    },
-                },
-            },
-            ArgResultPair {
-                // test entry for size argument
-                arg: vec!["--port", "80", "-f", "./shavee", "4096"], // --port 80 --file ./shavee 4096
-                result: CliArgs {
-                    operation: OperationMode::Print,
-                    second_factor: TwoFactorMode::File {
-                        file: String::from("./shavee"),
-                        port: Some(80),
-                        size: Some(4096),
-                    },
-                },
-            },
-            ArgResultPair {
-                arg: vec!["--file", "./shavee"], // --file ./shavee
-                result: CliArgs {
-                    operation: OperationMode::Print,
-                    second_factor: TwoFactorMode::File {
-                        file: String::from("./shavee"),
-                        port: None,
-                        size: None,
-                    },
-                },
-            },
-            ArgResultPair {
-                arg: vec!["--port", "80", "-f", "./shavee"], // --port 80 --file ./shavee
-                result: CliArgs {
-                    operation: OperationMode::Print,
-                    second_factor: TwoFactorMode::File {
-                        file: String::from("./shavee"),
-                        port: Some(80),
-                        size: None,
-                    },
-                },
-            },
-            ArgResultPair {
-                arg: vec!["-P", "443", "-f", "./shavee"], // -P 443 --file ./shavee
-                result: CliArgs {
-                    operation: OperationMode::Print,
-                    second_factor: TwoFactorMode::File {
-                        file: String::from("./shavee"),
-                        port: Some(443),
-                        size: None,
-                    },
-                },
-            },
-            ArgResultPair {
                 arg: vec!["-z", "zroot/test"], // -z zroot/test
                 result: CliArgs {
                     operation: OperationMode::Mount {
                         dataset: Dataset::new("zroot/test".to_string()).unwrap(),
                     },
                     second_factor: TwoFactorMode::Password,
-                },
-            },
-            ArgResultPair {
-                arg: vec!["-f", "./shavee", "-z", "zroot/test"], // -f ./shavee -z zroot/test
-                result: CliArgs {
-                    operation: OperationMode::Mount {
-                        dataset: Dataset::new("zroot/test".to_string()).unwrap(),
-                    },
-                    second_factor: TwoFactorMode::File {
-                        file: String::from("./shavee"),
-                        port: None,
-                        size: None,
-                    },
                 },
             },
             ArgResultPair {
@@ -320,6 +263,7 @@ mod tests {
                     second_factor: TwoFactorMode::Password,
                 },
             },
+            #[cfg(feature = "yubikey")]
             ArgResultPair {
                 arg: vec!["-y", "-s", "1", "-c", "-z", "zroot/test/"], // -y -s 1 -c -z zroot/test/
                 result: CliArgs {
@@ -327,6 +271,106 @@ mod tests {
                         dataset: Dataset::new("zroot/test".to_string()).unwrap(),
                     },
                     second_factor: TwoFactorMode::Yubikey { yslot: 1 },
+                },
+            },
+            #[cfg(feature = "yubikey")]
+            ArgResultPair {
+                arg: vec!["-y"], // -y
+                result: CliArgs {
+                    operation: OperationMode::Print,
+                    second_factor: TwoFactorMode::Yubikey { yslot: 2 },
+                },
+            },
+            #[cfg(feature = "yubikey")]
+            ArgResultPair {
+                arg: vec!["-y", "-s", "1"], // -y -s 1
+                result: CliArgs {
+                    operation: OperationMode::Print,
+                    second_factor: TwoFactorMode::Yubikey { yslot: 1 },
+                },
+            },
+            #[cfg(feature = "yubikey")]
+            ArgResultPair {
+                arg: vec!["--yubi", "--slot", "2"], // --yubi --slot 2
+                result: CliArgs {
+                    operation: OperationMode::Print,
+                    second_factor: TwoFactorMode::Yubikey { yslot: 2 },
+                },
+            },
+            #[cfg(feature = "file")]
+            ArgResultPair {
+                // test entry for size argument
+                arg: vec!["--file", "./shavee", "2048"], // --file ./shavee 2048
+                result: CliArgs {
+                    operation: OperationMode::Print,
+                    second_factor: TwoFactorMode::File {
+                        file: String::from("./shavee"),
+                        port: None,
+                        size: Some(2048),
+                    },
+                },
+            },
+            #[cfg(feature = "file")]
+            ArgResultPair {
+                // test entry for size argument
+                arg: vec!["--port", "80", "-f", "./shavee", "4096"], // --port 80 --file ./shavee 4096
+                result: CliArgs {
+                    operation: OperationMode::Print,
+                    second_factor: TwoFactorMode::File {
+                        file: String::from("./shavee"),
+                        port: Some(80),
+                        size: Some(4096),
+                    },
+                },
+            },
+            #[cfg(feature = "file")]
+            ArgResultPair {
+                arg: vec!["--file", "./shavee"], // --file ./shavee
+                result: CliArgs {
+                    operation: OperationMode::Print,
+                    second_factor: TwoFactorMode::File {
+                        file: String::from("./shavee"),
+                        port: None,
+                        size: None,
+                    },
+                },
+            },
+            #[cfg(feature = "file")]
+            ArgResultPair {
+                arg: vec!["--port", "80", "-f", "./shavee"], // --port 80 --file ./shavee
+                result: CliArgs {
+                    operation: OperationMode::Print,
+                    second_factor: TwoFactorMode::File {
+                        file: String::from("./shavee"),
+                        port: Some(80),
+                        size: None,
+                    },
+                },
+            },
+            #[cfg(feature = "file")]
+            ArgResultPair {
+                arg: vec!["-P", "443", "-f", "./shavee"], // -P 443 --file ./shavee
+                result: CliArgs {
+                    operation: OperationMode::Print,
+                    second_factor: TwoFactorMode::File {
+                        file: String::from("./shavee"),
+                        port: Some(443),
+                        size: None,
+                    },
+                },
+            },
+            #[cfg(feature = "file")]
+            ArgResultPair {
+                arg: vec!["-f", "./shavee", "-z", "zroot/test"], // -f ./shavee -z zroot/test
+                result: CliArgs {
+                    operation: OperationMode::Mount {
+                        dataset: Dataset::new("zroot/test".to_string()).unwrap(),
+                    },
+                    second_factor: TwoFactorMode::File {
+                        file: String::from("./shavee"),
+                        port: None,
+                        size: None,
+                    },
                 },
             },
         ];
@@ -345,20 +389,52 @@ mod tests {
         // For the invalid arguments, there is no output struct and we only check for error
 
         let invalid_arguments = [
-            vec!["-s"],                        // -s
-            vec!["--slot"],                    // --slot
-            vec!["--slot", "2"],               // --slot 2
-            vec!["-y", "-s", "3"],             // -y -s 3
-            vec!["--file"],                    // --file
-            vec!["-f"],                        // -f
-            vec!["-y", "-f", "./shavee"],      // -y -f ./shavee
-            vec!["-z"],                        // -z
-            vec!["--zset"],                    // --zset
-            vec!["--port", "80"],              // --port 80
-            vec!["-P"],                        // -P
+            vec!["--zset"],   // --zset
+            vec!["-P"],       // -P
+            vec!["-c"],       // -c
+            vec!["--create"], // --create
+            #[cfg(feature = "yubikey")]
+            vec!["-s"], // -s
+            #[cfg(feature = "yubikey")]
+            vec!["--slot"], // --slot
+            #[cfg(feature = "yubikey")]
+            vec!["--slot", "2"], // --slot 2
+            #[cfg(feature = "yubikey")]
+            vec!["-y", "-s", "3"], // -y -s 3
+            #[cfg(feature = "file")]
+            vec!["--file"], // --file
+            #[cfg(feature = "file")]
+            vec!["-f"], // -f
+            #[cfg(feature = "file")]
+            vec!["--port", "80"], // --port 80
+            #[cfg(feature = "file")]
+            vec!["-z"], // -z
+            #[cfg(feature = "file")]
             vec!["-P", "0", "-f", "./shavee"], // -P 0 -f ./shavee
-            vec!["-c"],                        // -c
-            vec!["--create"],                  // --create
+            #[cfg(any(feature = "file", feature = "yubikey"))]
+            vec!["-y", "-f", "./shavee"], // -y -f ./shavee
+            // The following tests that error is returned when yubikey 2fa is disabled at compile
+            #[cfg(not(feature = "yubikey"))]
+            vec!["-y", "-s", "1", "-c", "-z", "zroot/test/"], // -y -s 1 -c -z zroot/test/
+            #[cfg(not(feature = "yubikey"))]
+            vec!["-y"], // -y
+            #[cfg(not(feature = "yubikey"))]
+            vec!["-y", "-s", "1"], // -y -s 1
+            #[cfg(not(feature = "yubikey"))]
+            vec!["--yubi", "--slot", "2"], // --yubi --slot 2
+            // The following tests that error is returned when file 2fa is disabled at compile
+            #[cfg(not(feature = "file"))]
+            vec!["--file", "./shavee", "2048"], // --file ./shavee 2048
+            #[cfg(not(feature = "file"))]
+            vec!["--port", "80", "-f", "./shavee", "4096"], // --port 80 --file ./shavee 4096
+            #[cfg(not(feature = "file"))]
+            vec!["--file", "./shavee"], // --file ./shavee
+            #[cfg(not(feature = "file"))]
+            vec!["--port", "80", "-f", "./shavee"], // --port 80 --file ./shavee
+            #[cfg(not(feature = "file"))]
+            vec!["-P", "443", "-f", "./shavee"], // -P 443 --file ./shavee
+            #[cfg(not(feature = "file"))]
+            vec!["-f", "./shavee", "-z", "zroot/test"], // -f ./shavee -z zroot/test
         ];
 
         for index in 0..invalid_arguments.len() {

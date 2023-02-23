@@ -1,13 +1,18 @@
 [package]
 name = "shavee_pam"
 authors = ["Ashutosh Verma <shavee@ashu.io>"]
-version = "0.5.0"
+version = "0.5.1"
 edition = "2018"
 license = "MIT"
 
 [lib]
 crate-type = ["cdylib"]
 name = "shavee_pam"
+
+[features]
+default = ["yubikey", "file"]
+yubikey = []
+file = []
 
 [dependencies]
 pamsm = { version="0.5.0", features=["libpam"] }
