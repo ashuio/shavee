@@ -444,45 +444,50 @@ mod tests {
     //These tests checks for a reported error on non-existing dataset
     #[test]
     fn dataset_does_not_exists_test() {
-        // Check for ZFS tools and exit early
-        Command::new("zpool")
-            .arg("version")
-            .spawn()
-            .expect("ZFS and ZPOOL tools must be installed. Test terminated early!");
+        let zfs_version = Command::new("zpool").arg("version").spawn();
+        match zfs_version {
+            // Check for ZFS tools and exit early
+            // This test will only run if the ZFS is installed
+            Err(_) => {
+                eprintln!("ZFS and ZPOOL tools must be installed. This test terminated early!");
+                return;
+            }
+            Ok(_) => {
+                // use a random name for dataset to assure it doesn't already exists!
+                let zfs_dataset = Dataset {
+                    dataset: random_string(30),
+                };
+                let expected_error = format!(
+                    "cannot open '{}': dataset does not exist\n",
+                    zfs_dataset.dataset
+                );
 
-        // use a random name for dataset to assure it doesn't already exists!
-        let zfs_dataset = Dataset {
-            dataset: random_string(30),
-        };
-        let expected_error = format!(
-            "cannot open '{}': dataset does not exist\n",
-            zfs_dataset.dataset
-        );
+                // test all functions in a separate assert_eq
+                assert_eq!(
+                    zfs_dataset
+                        .loadkey(&"passkey_not_important".to_string())
+                        .unwrap_err()
+                        .to_string(),
+                    expected_error
+                );
 
-        // test all functions in a separate assert_eq
-        assert_eq!(
-            zfs_dataset
-                .loadkey(&"passkey_not_important".to_string())
-                .unwrap_err()
-                .to_string(),
-            expected_error
-        );
+                assert_eq!(zfs_dataset.list().unwrap_err().to_string(), expected_error);
 
-        assert_eq!(zfs_dataset.list().unwrap_err().to_string(), expected_error);
+                // NOTE: this test doesn't apply to zfs_create
 
-        // NOTE: this test doesn't apply to zfs_create
+                assert_eq!(zfs_dataset.mount().unwrap_err().to_string(), expected_error);
 
-        assert_eq!(zfs_dataset.mount().unwrap_err().to_string(), expected_error);
+                assert_eq!(
+                    zfs_dataset.umount().unwrap_err().to_string(),
+                    expected_error
+                );
 
-        assert_eq!(
-            zfs_dataset.umount().unwrap_err().to_string(),
-            expected_error
-        );
-
-        assert_eq!(
-            zfs_dataset.unloadkey().unwrap_err().to_string(),
-            expected_error
-        );
+                assert_eq!(
+                    zfs_dataset.unloadkey().unwrap_err().to_string(),
+                    expected_error
+                );
+            }
+        }
     }
 
     /* In this this section the supporting functions that are needed for
