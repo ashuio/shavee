@@ -231,7 +231,8 @@ mod tests {
         } // END **Integration Test**: Print File
 
         // **Integration Test**: Create from password then mount it
-        {
+        // This test will only run if there is root persmission
+        if nix::unistd::Uid::effective().is_root() {
             let (zpool_name, temp_folder) = prepare_zpool();
 
             let mut zpool_with_dataset = zpool_name.to_owned();
@@ -367,8 +368,9 @@ mod tests {
         } //END  **Integration Test**: Create from File then mount it
 
         // **Integration Test**: Create from File then mount it
+        // This test will only run if there is root persmission
         #[cfg(feature = "file")]
-        {
+        if nix::unistd::Uid::effective().is_root() {
             let (zpool_name, temp_folder) = prepare_zpool();
 
             let mut zpool_with_dataset = zpool_name.to_owned();
