@@ -256,224 +256,238 @@ mod tests {
     }
     #[test]
     fn zfs_mount_umount_test() {
-        // generate a temp zpool
-        let (zpool_name, temp_folder) = prepare_zpool();
-        // b/c of zpool creation process, the dataset name is the same as zpool
-        let zfs_dataset = Dataset {
-            dataset: zpool_name.clone(),
-        };
+        // This test will only run if there is root persmission
+        if nix::unistd::Uid::effective().is_root() {
+            // generate a temp zpool
+            let (zpool_name, temp_folder) = prepare_zpool();
+            // b/c of zpool creation process, the dataset name is the same as zpool
+            let zfs_dataset = Dataset {
+                dataset: zpool_name.clone(),
+            };
 
-        // NOTE: the output will be evaluated **AFTER** clean up so the temp folder and
-        // temp zpool can safely be removed.
+            // NOTE: the output will be evaluated **AFTER** clean up so the temp folder and
+            // temp zpool can safely be removed.
 
-        // **Test 1**: umount a dataset
-        let test_umount_output = zfs_dataset.umount();
+            // **Test 1**: umount a dataset
+            let test_umount_output = zfs_dataset.umount();
 
-        // **Test 2**: umount an already unmounted dataset
-        // This test is expected to fail!
-        let test_already_unmounted_dataset_output = zfs_dataset.umount();
+            // **Test 2**: umount an already unmounted dataset
+            // This test is expected to fail!
+            let test_already_unmounted_dataset_output = zfs_dataset.umount();
 
-        // **Test 3**: mount an unmounted dataset
-        let test_mount_output = zfs_dataset.mount();
+            // **Test 3**: mount an unmounted dataset
+            let test_mount_output = zfs_dataset.mount();
 
-        // **Test 4**: mount an already mounted dataset
-        // This test is expected to fail!
-        let test_already_mount_again_output = zfs_dataset.mount();
+            // **Test 4**: mount an already mounted dataset
+            // This test is expected to fail!
+            let test_already_mount_again_output = zfs_dataset.mount();
 
-        //clean up
-        cleanup_zpool(&zpool_name, temp_folder);
+            //clean up
+            cleanup_zpool(&zpool_name, temp_folder);
 
-        // **Test 1**
-        // test the output against expected result.
-        test_umount_output.expect("umount(): Dataset umount failed!");
+            // **Test 1**
+            // test the output against expected result.
+            test_umount_output.expect("umount(): Dataset umount failed!");
 
-        // **Test 2** Expected to fail
-        match test_already_unmounted_dataset_output {
-            Ok(_) => panic!("umount() on an already unmounted dataset failed!"),
-            Err(error) => assert_eq!(
-                format!(
-                    "cannot unmount '{}': not currently mounted\n",
-                    zfs_dataset.dataset
+            // **Test 2** Expected to fail
+            match test_already_unmounted_dataset_output {
+                Ok(_) => panic!("umount() on an already unmounted dataset failed!"),
+                Err(error) => assert_eq!(
+                    format!(
+                        "cannot unmount '{}': not currently mounted\n",
+                        zfs_dataset.dataset
+                    ),
+                    error.to_string()
                 ),
-                error.to_string()
-            ),
-        }
+            }
 
-        // **Test 3**
-        // test the output against expected result.
-        test_mount_output.expect("mount(): Dataset mount failed!");
+            // **Test 3**
+            // test the output against expected result.
+            test_mount_output.expect("mount(): Dataset mount failed!");
 
-        // **Test 4** Expected to fail
-        match test_already_mount_again_output {
-            Ok(_) => panic!("mount() on an already mounted dataset failed!"),
-            Err(error) => assert_eq!(
-                format!(
-                    "cannot mount '{}': filesystem already mounted\n",
-                    zfs_dataset.dataset
+            // **Test 4** Expected to fail
+            match test_already_mount_again_output {
+                Ok(_) => panic!("mount() on an already mounted dataset failed!"),
+                Err(error) => assert_eq!(
+                    format!(
+                        "cannot mount '{}': filesystem already mounted\n",
+                        zfs_dataset.dataset
+                    ),
+                    error.to_string()
                 ),
-                error.to_string()
-            ),
+            }
         }
     }
 
     #[test]
     fn zfs_list_test() {
-        // generate a temp zpool
-        let (zpool_name, temp_folder) = prepare_zpool();
-        // b/c of zpool creation process, the dataset name is the same as zpool
-        let zfs_dataset = Dataset {
-            dataset: zpool_name.clone(),
-        };
+        // This test will only run if there is root persmission
+        if nix::unistd::Uid::effective().is_root() {
+            // generate a temp zpool
+            let (zpool_name, temp_folder) = prepare_zpool();
+            // b/c of zpool creation process, the dataset name is the same as zpool
+            let zfs_dataset = Dataset {
+                dataset: zpool_name.clone(),
+            };
 
-        // NOTE: the output will be evaluated **AFTER** clean up so the temp folder and
-        // temp zpool can safely be removed.
+            // NOTE: the output will be evaluated **AFTER** clean up so the temp folder and
+            // temp zpool can safely be removed.
 
-        let test_output = zfs_dataset.list();
+            let test_output = zfs_dataset.list();
 
-        //clean up
-        cleanup_zpool(&zpool_name, temp_folder);
+            //clean up
+            cleanup_zpool(&zpool_name, temp_folder);
 
-        // test the output against expected result.
-        match test_output {
-            Ok(result) => assert_eq!(
-                result,
-                vec![Dataset {
-                    dataset: zpool_name
-                }]
-            ),
-            Err(error) => panic!("list(): Test failed: {:?}", error),
+            // test the output against expected result.
+            match test_output {
+                Ok(result) => assert_eq!(
+                    result,
+                    vec![Dataset {
+                        dataset: zpool_name
+                    }]
+                ),
+                Err(error) => panic!("list(): Test failed: {:?}", error),
+            }
         }
     }
 
     #[test]
     fn zfs_create_load_unload_key_test() {
-        // generate a temp zpool
-        let (zpool_name, temp_folder) = prepare_zpool();
+        // This test will only run if there is root persmission
+        if nix::unistd::Uid::effective().is_root() {
+            // generate a temp zpool
+            let (zpool_name, temp_folder) = prepare_zpool();
 
-        // b/c of zpool creation process, the dataset name is the same as zpool
-        let zfs_plan_dataset = Dataset {
-            dataset: zpool_name.clone(),
-        };
+            // b/c of zpool creation process, the dataset name is the same as zpool
+            let zfs_plan_dataset = Dataset {
+                dataset: zpool_name.clone(),
+            };
 
-        // NOTE: the output will be evaluated **AFTER** clean up so the temp folder and
-        // temp zpool can safely be removed.
+            // NOTE: the output will be evaluated **AFTER** clean up so the temp folder and
+            // temp zpool can safely be removed.
 
-        // **TEST 1**: create() on a dataset that is not encrypted
-        // This test is expected to fail!
-        let test_dataset_not_encrypted_must_fail_output =
-            zfs_plan_dataset.create(&random_string(3));
+            // **TEST 1**: create() on a dataset that is not encrypted
+            // This test is expected to fail!
+            let test_dataset_not_encrypted_must_fail_output =
+                zfs_plan_dataset.create(&random_string(3));
 
-        // **TEST 2**: create() a new encrypted dataset
-        let mut zpool_with_dataset = zpool_name.to_owned();
-        zpool_with_dataset.push('/');
-        zpool_with_dataset.push_str(&random_string(3));
-        let zfs_encrypted_dataset = Dataset {
-            dataset: zpool_with_dataset,
-        };
-        let test_create_new_encrypted_dataset_output =
-            zfs_encrypted_dataset.create(&random_string(8)); // min accepted key is 8 character
+            // **TEST 2**: create() a new encrypted dataset
+            let mut zpool_with_dataset = zpool_name.to_owned();
+            zpool_with_dataset.push('/');
+            zpool_with_dataset.push_str(&random_string(3));
+            let zfs_encrypted_dataset = Dataset {
+                dataset: zpool_with_dataset,
+            };
+            let test_create_new_encrypted_dataset_output =
+                zfs_encrypted_dataset.create(&random_string(8)); // min accepted key is 8 character
 
-        // **TEST 3**: create() on an already encrypted dataset with a known passphrase
-        // ZFS min accepted passphrase is 8 character
-        let passphrase = random_string(8);
-        let test_already_encrypted_dataset_output = zfs_encrypted_dataset.create(&passphrase);
+            // **TEST 3**: create() on an already encrypted dataset with a known passphrase
+            // ZFS min accepted passphrase is 8 character
+            let passphrase = random_string(8);
+            let test_already_encrypted_dataset_output = zfs_encrypted_dataset.create(&passphrase);
 
-        // **Test 4**: unloadkey() on a mounted dataset
-        // This test is expected to fail!
-        let test_unload_key_mounted_dataset_output = zfs_encrypted_dataset.unloadkey();
+            // **Test 4**: unloadkey() on a mounted dataset
+            // This test is expected to fail!
+            let test_unload_key_mounted_dataset_output = zfs_encrypted_dataset.unloadkey();
 
-        // **Test 5**: unloadkey() on a unmounted dataset
-        zfs_encrypted_dataset
-            .umount()
-            .expect("Test terminated unexpectedly early!");
-        let test_unload_key_unmounted_dataset_output = zfs_encrypted_dataset.unloadkey();
+            // **Test 5**: unloadkey() on a unmounted dataset
+            zfs_encrypted_dataset
+                .umount()
+                .expect("Test terminated unexpectedly early!");
+            let test_unload_key_unmounted_dataset_output = zfs_encrypted_dataset.unloadkey();
 
-        // **Test 6**: loadkey() on a unmounted dataset
-        let test_load_key_unmounted_dataset_output = zfs_encrypted_dataset.loadkey(&passphrase);
+            // **Test 6**: loadkey() on a unmounted dataset
+            let test_load_key_unmounted_dataset_output = zfs_encrypted_dataset.loadkey(&passphrase);
 
-        //clean up
-        cleanup_zpool(&zpool_name, temp_folder);
+            //clean up
+            cleanup_zpool(&zpool_name, temp_folder);
 
-        // now it is time to test the outputs against expected results.
+            // now it is time to test the outputs against expected results.
 
-        // **TEST 1**: create() on a dataset that is not encrypted
-        match test_dataset_not_encrypted_must_fail_output {
-            Ok(_) => panic!("create(): Set a new passphrase on an unencrypted dataset failed!"),
-            Err(error) => assert_eq!(
-                "Key change error: Dataset not encrypted.\n",
-                error.to_string()
-            ),
-        }
-
-        // **TEST 2**: create() a new encrypted dataset
-        test_create_new_encrypted_dataset_output
-            .expect("create(): Create new encrypted dataset failed!");
-
-        // **TEST 3**: create() on an already encrypted dataset
-        test_already_encrypted_dataset_output
-            .expect("create(): Set a new passphrase on an encrypted dataset failed!");
-
-        // **Test 4**: unloadkey() on a mounted dataset
-        match test_unload_key_mounted_dataset_output {
-            Ok(_) => panic!("unloadkey() on a mounted dataset failed!"),
-            Err(error) => assert_eq!(
-                format!(
-                    "Key unload error: '{}' is busy.\n",
-                    zfs_encrypted_dataset.dataset
+            // **TEST 1**: create() on a dataset that is not encrypted
+            match test_dataset_not_encrypted_must_fail_output {
+                Ok(_) => panic!("create(): Set a new passphrase on an unencrypted dataset failed!"),
+                Err(error) => assert_eq!(
+                    "Key change error: Dataset not encrypted.\n",
+                    error.to_string()
                 ),
-                error.to_string()
-            ),
+            }
+
+            // **TEST 2**: create() a new encrypted dataset
+            test_create_new_encrypted_dataset_output
+                .expect("create(): Create new encrypted dataset failed!");
+
+            // **TEST 3**: create() on an already encrypted dataset
+            test_already_encrypted_dataset_output
+                .expect("create(): Set a new passphrase on an encrypted dataset failed!");
+
+            // **Test 4**: unloadkey() on a mounted dataset
+            match test_unload_key_mounted_dataset_output {
+                Ok(_) => panic!("unloadkey() on a mounted dataset failed!"),
+                Err(error) => assert_eq!(
+                    format!(
+                        "Key unload error: '{}' is busy.\n",
+                        zfs_encrypted_dataset.dataset
+                    ),
+                    error.to_string()
+                ),
+            }
+
+            // **Test 5**: unloadkey() on a unmounted dataset
+            test_unload_key_unmounted_dataset_output.expect("unloadkey() failed!");
+
+            // **Test 6**: zfs_loadkey() on a unmounted dataset
+            test_load_key_unmounted_dataset_output.expect("loadkey() failed!");
         }
-
-        // **Test 5**: unloadkey() on a unmounted dataset
-        test_unload_key_unmounted_dataset_output.expect("unloadkey() failed!");
-
-        // **Test 6**: zfs_loadkey() on a unmounted dataset
-        test_load_key_unmounted_dataset_output.expect("loadkey() failed!");
     }
 
     //These tests checks for a reported error on non-existing dataset
     #[test]
     fn dataset_does_not_exists_test() {
-        // Check for ZFS tools and exit early
-        Command::new("zpool")
-            .arg("version")
-            .spawn()
-            .expect("ZFS and ZPOOL tools must be installed. Test terminated early!");
+        let zfs_version = Command::new("zpool").arg("version").spawn();
+        match zfs_version {
+            // Check for ZFS tools and exit early
+            // This test will only run if the ZFS is installed
+            Err(_) => {
+                eprintln!("ZFS and ZPOOL tools must be installed. This test terminated early!");
+                return;
+            }
+            Ok(_) => {
+                // use a random name for dataset to assure it doesn't already exists!
+                let zfs_dataset = Dataset {
+                    dataset: random_string(30),
+                };
+                let expected_error = format!(
+                    "cannot open '{}': dataset does not exist\n",
+                    zfs_dataset.dataset
+                );
 
-        // use a random name for dataset to assure it doesn't already exists!
-        let zfs_dataset = Dataset {
-            dataset: random_string(30),
-        };
-        let expected_error = format!(
-            "cannot open '{}': dataset does not exist\n",
-            zfs_dataset.dataset
-        );
+                // test all functions in a separate assert_eq
+                assert_eq!(
+                    zfs_dataset
+                        .loadkey(&"passkey_not_important".to_string())
+                        .unwrap_err()
+                        .to_string(),
+                    expected_error
+                );
 
-        // test all functions in a separate assert_eq
-        assert_eq!(
-            zfs_dataset
-                .loadkey(&"passkey_not_important".to_string())
-                .unwrap_err()
-                .to_string(),
-            expected_error
-        );
+                assert_eq!(zfs_dataset.list().unwrap_err().to_string(), expected_error);
 
-        assert_eq!(zfs_dataset.list().unwrap_err().to_string(), expected_error);
+                // NOTE: this test doesn't apply to zfs_create
 
-        // NOTE: this test doesn't apply to zfs_create
+                assert_eq!(zfs_dataset.mount().unwrap_err().to_string(), expected_error);
 
-        assert_eq!(zfs_dataset.mount().unwrap_err().to_string(), expected_error);
+                assert_eq!(
+                    zfs_dataset.umount().unwrap_err().to_string(),
+                    expected_error
+                );
 
-        assert_eq!(
-            zfs_dataset.umount().unwrap_err().to_string(),
-            expected_error
-        );
-
-        assert_eq!(
-            zfs_dataset.unloadkey().unwrap_err().to_string(),
-            expected_error
-        );
+                assert_eq!(
+                    zfs_dataset.unloadkey().unwrap_err().to_string(),
+                    expected_error
+                );
+            }
+        }
     }
 
     /* In this this section the supporting functions that are needed for

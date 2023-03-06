@@ -586,7 +586,7 @@ dependencies = [
 
 [[package]]
 name = "shavee"
-version = "0.5.0"
+version = "0.5.1"
 dependencies = [
  "base64",
  "clap",
@@ -616,7 +616,7 @@ dependencies = [
 
 [[package]]
 name = "shavee_pam"
-version = "0.5.0"
+version = "0.5.1"
 dependencies = [
  "base64",
  "clap",

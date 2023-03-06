@@ -5,7 +5,10 @@ extern crate pamsm;
 
 use base64;
 use pamsm::{Pam, PamError, PamFlags, PamLibExt, PamServiceModule};
-use shavee_core::{filehash, password, zfs::Dataset};
+#[cfg(feature = "file")]
+use shavee_core::filehash;
+use shavee_core::password;
+use shavee_core::zfs::Dataset;
 struct PamShavee;
 
 // TODO: Need unit tests implemented for the PAM module functions
@@ -51,8 +54,10 @@ impl PamServiceModule for PamShavee {
         };
 
         let result = match umode {
+            #[cfg(feature = "yubikey")]
             args::TwoFactorMode::Yubikey { yslot } => dataset.yubi_unlock(pass, yslot),
 
+            #[cfg(feature = "file")]
             args::TwoFactorMode::File { file, port, size } => {
                 let filehash = match filehash::get_filehash(file, port, size) {
                     Ok(error) => error,

@@ -359,10 +359,10 @@ mod tests {
                 size: None,
                 port: Some(80),
                 hash_result: Ok(vec![
-                    243, 179, 171, 62, 99, 81, 226, 91, 92, 24, 130, 190, 168, 211, 126, 250, 221,
-                    192, 234, 114, 191, 21, 59, 176, 103, 104, 143, 119, 90, 38, 129, 13, 50, 181,
-                    79, 1, 75, 241, 206, 188, 127, 233, 48, 66, 216, 91, 24, 181, 180, 83, 227, 34,
-                    209, 84, 188, 85, 213, 204, 39, 84, 176, 223, 180, 178,
+                    207, 131, 225, 53, 126, 239, 184, 189, 241, 84, 40, 80, 214, 109, 128, 7, 214,
+                    32, 228, 5, 11, 87, 21, 220, 131, 244, 169, 33, 211, 108, 233, 206, 71, 208,
+                    209, 60, 93, 133, 242, 176, 255, 131, 24, 210, 135, 126, 236, 47, 99, 185, 49,
+                    189, 71, 65, 122, 129, 165, 56, 50, 122, 249, 39, 218, 62,
                 ]),
             },
             FilePortHashResultPair {
@@ -431,6 +431,7 @@ mod tests {
             let file = file_hash_result_pairs[index].file.clone();
             let port = file_hash_result_pairs[index].port;
             let size = file_hash_result_pairs[index].size;
+            println!("{:?}", index); // in case of test failure shows which index caused it
 
             match get_filehash_http_sftp(file, port, size) {
                 Ok(v) => assert_eq!(
@@ -538,10 +539,10 @@ mod tests {
                 size: Some(1 << 15),
                 port: Some(80),
                 hash_result: Ok(vec![
-                    243, 179, 171, 62, 99, 81, 226, 91, 92, 24, 130, 190, 168, 211, 126, 250, 221,
-                    192, 234, 114, 191, 21, 59, 176, 103, 104, 143, 119, 90, 38, 129, 13, 50, 181,
-                    79, 1, 75, 241, 206, 188, 127, 233, 48, 66, 216, 91, 24, 181, 180, 83, 227, 34,
-                    209, 84, 188, 85, 213, 204, 39, 84, 176, 223, 180, 178,
+                    207, 131, 225, 53, 126, 239, 184, 189, 241, 84, 40, 80, 214, 109, 128, 7, 214,
+                    32, 228, 5, 11, 87, 21, 220, 131, 244, 169, 33, 211, 108, 233, 206, 71, 208,
+                    209, 60, 93, 133, 242, 176, 255, 131, 24, 210, 135, 126, 236, 47, 99, 185, 49,
+                    189, 71, 65, 122, 129, 165, 56, 50, 122, 249, 39, 218, 62,
                 ]),
             },
             FilePortHashResultPair {
@@ -622,6 +623,7 @@ mod tests {
                 file = receive_file.into_os_string().into_string().unwrap();
             }
 
+            println!("{:?}", index); // in case of test failure it shows which index caused it
             let port = file_hash_result_pairs[index].port;
             let size = file_hash_result_pairs[index].size;
             match get_filehash(file, port, size) {

@@ -1,6 +1,6 @@
 [package]
 name = "shavee"
-version = "0.5.0"
+version = "0.5.1"
 authors = ["Ashutosh Verma <shavee@ashu.io>"]
 edition = "2018"
 license = "MIT"
@@ -10,9 +10,12 @@ documentation = "https://shavee.ashu.io"
 readme = "README.md"
 repository = "https://github.com/ashuio/shavee"
 
+[features]
+default = ["file", "yubikey"]
+yubikey = []
+file = []
 
 [dependencies]
-
 sha2 = "0.10.1"
 clap = { version = "3", features = ["cargo"] }
 rpassword = "5.0.1"
