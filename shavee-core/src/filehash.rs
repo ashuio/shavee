@@ -312,6 +312,13 @@ mod tests {
 
     #[test]
     fn remote_file_hash() {
+
+        // Check for Nix package builder before running the unit test [issue #27]
+        if std::env::var("buildPhase").is_ok() {
+            eprintln!("Nix package environment detected. Unit test is skipped.");
+            return;
+        }
+
         // defining a struct that will hold intput arguments
         // and their output hash results
         #[derive(Debug, PartialEq)]
@@ -453,9 +460,16 @@ mod tests {
 
     #[test]
     fn get_filehash_unit_test() {
+
+        // Check for Nix package builder before running the unit test [issue #27]
+        if std::env::var("buildPhase").is_ok() {
+            eprintln!("Nix package environment detected. Unit test is skipped.");
+            return;
+        }
         // Check for root permission and exit early
         if nix::unistd::Uid::effective().is_root() {
-            panic!("Test must not run under Root permission! Test terminated early!");
+            eprintln!("Test must not run under Root permission! Test terminated early!");
+            return;
         }
 
         // defining a struct that will hold intput arguments
