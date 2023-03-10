@@ -314,7 +314,7 @@ mod tests {
     fn remote_file_hash() {
 
         // Check for Nix package builder before running the unit test [issue #27]
-        if std::env::var("postInstall").is_ok() {
+        if std::env::var("installPhase").is_ok() {
             eprintln!("Nix package environment detected. Unit test is skipped.");
             return;
         }
@@ -462,7 +462,7 @@ mod tests {
     fn get_filehash_unit_test() {
 
         // Check for Nix package builder before running the unit test [issue #27]
-        if std::env::var("postInstall").is_ok() {
+        if std::env::var("installPhase").is_ok() {
             eprintln!("Nix package environment detected. Unit test is skipped.");
             return;
         }
