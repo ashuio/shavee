@@ -1,6 +1,13 @@
 use crate::{password::hash_argon2, yubikey::*, zfs::*};
-use base64::encode_config;
+use base64::{
+    alphabet,
+    engine::{general_purpose, GeneralPurpose},
+    Engine,
+};
 use std::error::Error;
+
+const BASE64_ENGINE: GeneralPurpose =
+    GeneralPurpose::new(&alphabet::STANDARD, general_purpose::NO_PAD);
 
 // All ZFS Dataset functions are methods for the Dataset Struct
 impl Dataset {
@@ -41,13 +48,13 @@ impl Dataset {
 
 pub fn yubi_key_calculation(pass: String, yubi_slot: u8) -> Result<String, Box<dyn Error>> {
     let key = yubikey_get_hash(pass, yubi_slot)?;
-    Ok(encode_config(key, base64::STANDARD_NO_PAD))
+    Ok(BASE64_ENGINE.encode(key))
 }
 
 pub fn file_key_calculation(pass: String, filehash: Vec<u8>) -> Result<String, Box<dyn Error>> {
     let passhash = hash_argon2(pass.into_bytes())?;
     let key = hash_argon2([filehash, passhash].concat())?;
-    Ok(encode_config(key, base64::STANDARD_NO_PAD))
+    Ok(BASE64_ENGINE.encode(key))
 }
 
 #[cfg(test)]

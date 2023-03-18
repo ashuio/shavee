@@ -3,7 +3,11 @@ mod args;
 #[macro_use]
 extern crate pamsm;
 
-use base64;
+use base64::{
+    alphabet,
+    engine::{general_purpose, GeneralPurpose},
+    Engine,
+};
 use pamsm::{Pam, PamError, PamFlags, PamLibExt, PamServiceModule};
 #[cfg(feature = "file")]
 use shavee_core::filehash;
@@ -12,6 +16,9 @@ use shavee_core::zfs::Dataset;
 struct PamShavee;
 
 // TODO: Need unit tests implemented for the PAM module functions
+
+const BASE64_ENGINE: GeneralPurpose =
+    GeneralPurpose::new(&alphabet::STANDARD, general_purpose::NO_PAD);
 
 impl PamServiceModule for PamShavee {
     fn open_session(_: Pam, _: PamFlags, _: Vec<String>) -> PamError {
@@ -71,7 +78,7 @@ impl PamServiceModule for PamShavee {
 
             args::TwoFactorMode::Password => {
                 let key = password::hash_argon2(pass.into_bytes()).unwrap();
-                let key = base64::encode_config(key, base64::STANDARD_NO_PAD);
+                let key = BASE64_ENGINE.encode(key);
                 dataset.pass_unlock(key)
             }
         };

@@ -1,7 +1,11 @@
 mod args;
 
 use args::*;
-use base64;
+use base64::{
+    alphabet,
+    engine::{general_purpose, GeneralPurpose},
+    Engine,
+};
 #[cfg(feature = "file")]
 use shavee_core::filehash;
 #[cfg(any(feature = "yubikey", feature = "file"))]
@@ -12,6 +16,10 @@ use std::thread;
 
 // main() collect the arguments from command line, pass them to run() and print any
 // messages upon exiting the program
+
+const BASE64_ENGINE: GeneralPurpose =
+    GeneralPurpose::new(&alphabet::STANDARD, general_purpose::NO_PAD);
+
 fn main() {
     let args = CliArgs::new();
 
@@ -63,7 +71,7 @@ fn run(args: CliArgs) -> Result<Option<String>, Box<dyn std::error::Error>> {
     // prompt user for password, in case of an error, terminate this function and
     // return the error to main()
     let password =
-        rpassword::prompt_password_stderr("Dataset Password: ").map_err(|e| e.to_string())?;
+        rpassword::prompt_password("Dataset Password: ").map_err(|e| e.to_string())?;
 
     // if in the file 2FA mode, then wait for hash generation thread to finish
     // and unwrap the result. In case of an error, terminate this function and
@@ -109,7 +117,7 @@ fn run(args: CliArgs) -> Result<Option<String>, Box<dyn std::error::Error>> {
 
 fn password_mode_hash(password: &String) -> Result<String, Box<dyn std::error::Error>> {
     let key = password::hash_argon2(password.clone().into_bytes())?;
-    let passphrase = base64::encode_config(key, base64::STANDARD_NO_PAD);
+    let passphrase = BASE64_ENGINE.encode(key);
     Ok(passphrase)
 }
 
