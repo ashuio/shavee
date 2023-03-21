@@ -71,7 +71,7 @@ fn run(args: CliArgs) -> Result<Option<String>, Box<dyn std::error::Error>> {
     // prompt user for password, in case of an error, terminate this function and
     // return the error to main()
     let password =
-        rpassword::prompt_password("Dataset Password: ").map_err(|e| e.to_string())?;
+        rpassword::prompt_password_stderr("Dataset Password: ").map_err(|e| e.to_string())?;
 
     // if in the file 2FA mode, then wait for hash generation thread to finish
     // and unwrap the result. In case of an error, terminate this function and

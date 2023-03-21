@@ -18,9 +18,9 @@ file = []
 [dependencies]
 sha2 = "0.10.6"
 clap = { version = "3", features = ["cargo"] }
-rpassword = "7.2.0"
+rpassword = "5.0.1"
 base64 = "0.21.0"
-shavee_core = {path = "../shavee-core"}
+shavee_core = { path = "../shavee-core" }
 
 [dev-dependencies]
 stdio-override = "0"
