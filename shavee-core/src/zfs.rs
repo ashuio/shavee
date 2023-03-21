@@ -2,14 +2,19 @@ use std::io::prelude::*;
 use std::process::Command;
 
 #[derive(Debug, PartialEq, Clone)]
+/// Struct to store dataset
 pub struct Dataset {
     dataset: String,
 }
 
 impl Dataset {
+    /// Initialize the dataset
+    /// first validate the correct ZFS naming requirements https://docs.oracle.com/cd/E26505_01/html/E37384/gbcpt.html
     pub fn new(dataset: String) -> Result<Self, std::io::Error> {
-        // first validate the correct ZFS naming requirements https://docs.oracle.com/cd/E26505_01/html/E37384/gbcpt.html
-
+        crate::trace(&format!(
+            "Validating the ZFS dataset name: \"{}\".",
+            dataset
+        ));
         let is_dataset_name_valid = dataset
             .chars()
             // only contain alphanumeric characters and - . : _
@@ -24,20 +29,31 @@ impl Dataset {
 
         // return error if the string is not a valid for dataset name
         if !(is_dataset_name_valid) || !(does_name_start_alphanumeric) {
+            crate::trace("Name is invalid!");
             return Err(std::io::Error::new(
                 std::io::ErrorKind::InvalidInput,
                 "ZFS Dataset name is not valid!",
             ));
         }
+        crate::trace("Name is valid!");
         Ok(Self { dataset })
     }
 
     // Convert the Dataset name to String
-    pub fn to_string(self) -> String {
-        self.dataset
+    pub fn to_string(&self) -> String {
+        crate::trace(&format!(
+            "Extracting the dataset's name: \"{}\".",
+            self.dataset
+        ));
+        self.dataset.to_owned()
     }
 
+    /// loads the encryption key
     pub fn loadkey(&self, passphrase: &str) -> Result<Self, std::io::Error> {
+        crate::trace(&format!(
+            "Loading the passphrase for the \"{}\" ZFS dataset.",
+            self.dataset
+        ));
         let mut zfs = Command::new("zfs") // Call zfs mount
             .arg("load-key")
             .arg("-L")
@@ -46,7 +62,7 @@ impl Dataset {
             .stdin(std::process::Stdio::piped())
             .stderr(std::process::Stdio::piped())
             .spawn()?;
-
+        crate::trace("Executing the ZFS load-key command!");
         let zstdin = zfs
             .stdin // Supply encryption key via stdin
             .as_mut()
@@ -60,6 +76,7 @@ impl Dataset {
 
         let result = zfs.wait_with_output()?;
         if !result.status.success() {
+            crate::error("Command failed!");
             return Err(std::io::Error::new(
                 std::io::ErrorKind::Unsupported,
                 String::from_utf8(result.stderr).expect(crate::UNREACHABLE_CODE),
@@ -68,11 +85,14 @@ impl Dataset {
         Ok(self.clone())
     }
 
+    /// creates an encrypted ZFS dataset with passphrase
     pub fn create(&self, passphrase: &str) -> Result<(), std::io::Error> {
+        crate::trace("Create the ZFS dataset.\tCheck if it already exists.");
         // check if dataset already exists
         match Dataset::list(&self) {
             // if it exists, then only change password
             Ok(list_datasets) => {
+                crate::trace("Dataset already exists, only change passphrase.");
                 for each_dataset in list_datasets {
                     let mut zfs_changekey = Command::new("zfs")
                         .arg("change-key")
@@ -84,6 +104,8 @@ impl Dataset {
                         .stdin(std::process::Stdio::piped())
                         .stderr(std::process::Stdio::piped())
                         .spawn()?;
+
+                    crate::trace("Executing the ZFS change-key commend!");
 
                     let zstdin = zfs_changekey
                         .stdin // Supply encryption key via stdin
@@ -101,6 +123,7 @@ impl Dataset {
                     // capture the error message and pass it to the calling function
                     let result = zfs_changekey.wait_with_output()?;
                     if !result.status.success() {
+                        crate::error("Command failed!");
                         return Err(std::io::Error::new(
                             std::io::ErrorKind::Unsupported,
                             String::from_utf8(result.stderr).expect(crate::UNREACHABLE_CODE),
@@ -110,6 +133,7 @@ impl Dataset {
             }
             // if dataset doesn't exists then create it
             Err(_) => {
+                crate::trace("Dataset doesn't exist. Creating it.");
                 let mut zfs = Command::new("zfs") // Call zfs create
                     .arg("create")
                     .arg("-o")
@@ -123,6 +147,8 @@ impl Dataset {
                     .stderr(std::process::Stdio::piped())
                     .spawn()?;
 
+                crate::trace("Executing the ZFS create commend!");
+
                 zfs.stdin // Supply encryption key via stdin
                     .as_mut()
                     .expect("failed to get zfs stdin!")
@@ -130,7 +156,9 @@ impl Dataset {
                     .expect("Failed to write to stdin!");
 
                 let result = zfs.wait_with_output()?;
+
                 if !result.status.success() {
+                    crate::error("Command failed!");
                     return Err(std::io::Error::new(
                         std::io::ErrorKind::Unsupported,
                         String::from_utf8(result.stderr).expect(crate::UNREACHABLE_CODE),
@@ -138,10 +166,13 @@ impl Dataset {
                 }
             }
         };
+        crate::trace("ZFS create was executed successfully!");
         Ok(())
     }
 
+    /// Generates a list of ZFS datasets
     pub fn list(&self) -> Result<Vec<Dataset>, std::io::Error> {
+        crate::trace("Generating a list with a given name of a ZFS dataset.");
         let zfs_list = Command::new("zfs")
             .arg("list")
             .arg("-H")
@@ -152,6 +183,7 @@ impl Dataset {
             .output()?;
 
         if !zfs_list.status.success() {
+            crate::error("Command failed!");
             return Err(std::io::Error::new(
                 // error kind is not known
                 std::io::ErrorKind::Other,
@@ -161,6 +193,7 @@ impl Dataset {
         };
 
         let out = String::from_utf8(zfs_list.stdout).map_err(|error| {
+            crate::trace("Unknown input!");
             std::io::Error::new(
                 // error kind is not known
                 std::io::ErrorKind::InvalidInput,
@@ -177,25 +210,108 @@ impl Dataset {
             .collect())
     }
 
+    /// read ZFS dataset property and return it as Some().
+    /// If the dataset property is empty "-" then returns None.
+    /// Otherwise, it returns the error
+    pub fn get_property(&self, dataset_property: String) -> Result<Option<String>, std::io::Error> {
+        crate::trace("Getting the ZFS dataset property.");
+        let mut zfs_get_property = Command::new("zfs")
+            .arg("get")
+            .arg("-H")
+            .arg("-o")
+            .arg("value")
+            .arg(&dataset_property)
+            .arg(&self.dataset)
+            .output()?;
+
+        if !zfs_get_property.status.success() {
+            crate::error("Command failed!");
+            return Err(std::io::Error::new(
+                // error kind is not known
+                std::io::ErrorKind::Other,
+                //stderr used to generate the error message.
+                String::from_utf8_lossy(&zfs_get_property.stderr).to_string(),
+            ));
+        }
+
+        // remove the \n (newline) character at the end of the output
+        let output_len = zfs_get_property.stdout.len().saturating_sub("\n".len());
+        zfs_get_property.stdout.truncate(output_len);
+
+        let output = String::from_utf8(zfs_get_property.stdout).map_err(|error| {
+            std::io::Error::new(
+                // error kind is not known
+                std::io::ErrorKind::InvalidInput,
+                error,
+            )
+        })?;
+
+        crate::trace(&format!(
+            "ZFS \"{}\" dataset property \"{}\" is \"{}\"!",
+            &self.dataset, &dataset_property, output
+        ));
+
+        // checks for empty value and returns None
+        if output == "-" {
+            Ok(None)
+        } else {
+            Ok(Some(output))
+        }
+    }
+
+    /// Set ZFS dataset property
+    pub fn set_property(
+        &self,
+        dataset_property: String,
+        dataset_property_value: &str,
+    ) -> Result<(), std::io::Error> {
+        crate::trace("Setting the ZFS dataset property.");
+        let mut dataset_property_eq_value = dataset_property.clone();
+        // Concat to generate <property>=<value>
+        dataset_property_eq_value.push_str("=");
+        dataset_property_eq_value.push_str(dataset_property_value);
+        let zfs_set_property = Command::new("zfs")
+            .arg("set")
+            .arg(dataset_property_eq_value)
+            .arg(&self.dataset)
+            .output()?;
+
+        if !zfs_set_property.status.success() {
+            crate::error("Command failed!");
+            return Err(std::io::Error::new(
+                // error kind is not known
+                std::io::ErrorKind::Other,
+                //stderr used to generate the error message.
+                String::from_utf8_lossy(&zfs_set_property.stderr).to_string(),
+            ));
+        }
+        Ok(())
+    }
+
+    /// Mounts the dataset
     pub fn mount(&self) -> Result<(), std::io::Error> {
         Dataset::simple_subcommand(self, "mount")?;
         Ok(())
     }
 
+    /// Unmount the dataset
     pub fn umount(&self) -> Result<Self, std::io::Error> {
         Dataset::simple_subcommand(self, "umount")
     }
 
+    /// unloads the encryption key
     pub fn unloadkey(&self) -> Result<Self, std::io::Error> {
         Dataset::simple_subcommand(self, "unload-key")
     }
 
     fn simple_subcommand(&self, subcommand: &str) -> Result<Self, std::io::Error> {
+        crate::trace(&format!("Executing ZFS \"{}\" command.", subcommand));
         let command_output = Command::new("zfs")
             .arg(subcommand)
             .arg(&self.dataset)
             .output()?;
         if !command_output.status.success() {
+            crate::error("Command failed!");
             return Err(std::io::Error::new(
                 // error kind is not known
                 std::io::ErrorKind::Other,
@@ -203,7 +319,7 @@ impl Dataset {
                 String::from_utf8_lossy(&command_output.stderr).to_string(),
             ));
         };
-        Ok(self.clone())
+        Ok(self.to_owned())
     }
 }
 
@@ -214,6 +330,8 @@ mod tests {
 
     #[test]
     fn zfs_to_string_test() {
+        crate::trace_init(false);
+        crate::trace("Checking for dataset to string conversaion:");
         let dataset_name = String::from("dataset/test");
         let dataset_struct = Dataset::new(dataset_name.clone()).unwrap();
 
@@ -222,6 +340,9 @@ mod tests {
 
     #[test]
     fn zfs_name_validation() {
+        crate::trace_init(false);
+
+        crate::trace("Checking for invalid names:");
         // check for invalid names
         let invalid_names = [
             String::from("_invalid"),
@@ -235,6 +356,7 @@ mod tests {
             assert_eq!(error.kind(), std::io::ErrorKind::InvalidInput);
         }
 
+        crate::trace("Checking for valid names:");
         // check for valid names
         let valid_names = [
             String::from("valid"),
@@ -254,196 +376,260 @@ mod tests {
             );
         }
     }
+
+    #[test]
+    fn zfs_set_get_property_test() {
+        crate::trace_init(false);
+        // This test will only run if there is root permission
+        if !nix::unistd::Uid::effective().is_root() {
+            eprintln!("This test needs root permission. Terminating early!");
+            return;
+        }
+
+        // generate a temp zpool
+        let (zpool_name, temp_folder) = prepare_zpool();
+        // b/c of zpool creation process, the dataset name is the same as zpool
+        let zfs_dataset = Dataset {
+            dataset: zpool_name.clone(),
+        };
+
+        // NOTE: the output will be evaluated **AFTER** clean up so the temp folder and
+        // temp zpool can safely be removed.
+
+        // **Test 1**: set property
+        let test_set_property_output =
+            zfs_dataset.set_property(String::from("com.github.shavee:unit_test"), "value_set");
+
+        // **Test 2**: get property with value
+        let test_get_property_output =
+            zfs_dataset.get_property(String::from("com.github.shavee:unit_test"));
+
+        // **Test 3**: get an empty property
+        let test_get_empty_property_output =
+            zfs_dataset.get_property(String::from("not.set:property"));
+
+        //clean up
+        cleanup_zpool(&zpool_name, temp_folder);
+
+        // **Test 1**
+        // test the output against expected result.
+        test_set_property_output.expect("set_property(): Dataset set property failed!");
+
+        // **Test 2**
+        // test the output against expected result.
+        assert_eq!(
+            test_get_property_output.unwrap(),
+            Some(String::from("value_set"))
+        );
+
+        // **Test 3**
+        // test the output against expected result.
+        assert_eq!(test_get_empty_property_output.unwrap(), None);
+    }
+
     #[test]
     fn zfs_mount_umount_test() {
-        // This test will only run if there is root persmission
-        if nix::unistd::Uid::effective().is_root() {
-            // generate a temp zpool
-            let (zpool_name, temp_folder) = prepare_zpool();
-            // b/c of zpool creation process, the dataset name is the same as zpool
-            let zfs_dataset = Dataset {
-                dataset: zpool_name.clone(),
-            };
+        crate::trace_init(false);
+        // This test will only run if there is root permission
+        if !nix::unistd::Uid::effective().is_root() {
+            eprintln!("This test needs root permission. Terminating early!");
+            return;
+        }
 
-            // NOTE: the output will be evaluated **AFTER** clean up so the temp folder and
-            // temp zpool can safely be removed.
+        // generate a temp zpool
+        let (zpool_name, temp_folder) = prepare_zpool();
+        // b/c of zpool creation process, the dataset name is the same as zpool
+        let zfs_dataset = Dataset {
+            dataset: zpool_name.clone(),
+        };
 
-            // **Test 1**: umount a dataset
-            let test_umount_output = zfs_dataset.umount();
+        // NOTE: the output will be evaluated **AFTER** clean up so the temp folder and
+        // temp zpool can safely be removed.
 
-            // **Test 2**: umount an already unmounted dataset
-            // This test is expected to fail!
-            let test_already_unmounted_dataset_output = zfs_dataset.umount();
+        // **Test 1**: umount a dataset
+        let test_umount_output = zfs_dataset.umount();
 
-            // **Test 3**: mount an unmounted dataset
-            let test_mount_output = zfs_dataset.mount();
+        // **Test 2**: umount an already unmounted dataset
+        // This test is expected to fail!
+        let test_already_unmounted_dataset_output = zfs_dataset.umount();
 
-            // **Test 4**: mount an already mounted dataset
-            // This test is expected to fail!
-            let test_already_mount_again_output = zfs_dataset.mount();
+        // **Test 3**: mount an unmounted dataset
+        let test_mount_output = zfs_dataset.mount();
 
-            //clean up
-            cleanup_zpool(&zpool_name, temp_folder);
+        // **Test 4**: mount an already mounted dataset
+        // This test is expected to fail!
+        let test_already_mount_again_output = zfs_dataset.mount();
 
-            // **Test 1**
-            // test the output against expected result.
-            test_umount_output.expect("umount(): Dataset umount failed!");
+        //clean up
+        cleanup_zpool(&zpool_name, temp_folder);
 
-            // **Test 2** Expected to fail
-            match test_already_unmounted_dataset_output {
-                Ok(_) => panic!("umount() on an already unmounted dataset failed!"),
-                Err(error) => assert_eq!(
-                    format!(
-                        "cannot unmount '{}': not currently mounted\n",
-                        zfs_dataset.dataset
-                    ),
-                    error.to_string()
+        // **Test 1**
+        // test the output against expected result.
+        test_umount_output.expect("umount(): Dataset umount failed!");
+
+        // **Test 2** Expected to fail
+        match test_already_unmounted_dataset_output {
+            Ok(_) => panic!("umount() on an already unmounted dataset failed!"),
+            Err(error) => assert_eq!(
+                format!(
+                    "cannot unmount '{}': not currently mounted\n",
+                    zfs_dataset.dataset
                 ),
-            }
+                error.to_string()
+            ),
+        }
 
-            // **Test 3**
-            // test the output against expected result.
-            test_mount_output.expect("mount(): Dataset mount failed!");
+        // **Test 3**
+        // test the output against expected result.
+        test_mount_output.expect("mount(): Dataset mount failed!");
 
-            // **Test 4** Expected to fail
-            match test_already_mount_again_output {
-                Ok(_) => panic!("mount() on an already mounted dataset failed!"),
-                Err(error) => assert_eq!(
-                    format!(
-                        "cannot mount '{}': filesystem already mounted\n",
-                        zfs_dataset.dataset
-                    ),
-                    error.to_string()
+        // **Test 4** Expected to fail
+        match test_already_mount_again_output {
+            Ok(_) => panic!("mount() on an already mounted dataset failed!"),
+            Err(error) => assert_eq!(
+                format!(
+                    "cannot mount '{}': filesystem already mounted\n",
+                    zfs_dataset.dataset
                 ),
-            }
+                error.to_string()
+            ),
         }
     }
 
     #[test]
     fn zfs_list_test() {
-        // This test will only run if there is root persmission
-        if nix::unistd::Uid::effective().is_root() {
-            // generate a temp zpool
-            let (zpool_name, temp_folder) = prepare_zpool();
-            // b/c of zpool creation process, the dataset name is the same as zpool
-            let zfs_dataset = Dataset {
-                dataset: zpool_name.clone(),
-            };
+        crate::trace_init(false);
+        // This test will only run if there is root permission
+        if !nix::unistd::Uid::effective().is_root() {
+            eprintln!("This test needs root permission. Terminating early!");
+            return;
+        }
 
-            // NOTE: the output will be evaluated **AFTER** clean up so the temp folder and
-            // temp zpool can safely be removed.
+        // generate a temp zpool
+        let (zpool_name, temp_folder) = prepare_zpool();
+        // b/c of zpool creation process, the dataset name is the same as zpool
+        let zfs_dataset = Dataset {
+            dataset: zpool_name.clone(),
+        };
 
-            let test_output = zfs_dataset.list();
+        // NOTE: the output will be evaluated **AFTER** clean up so the temp folder and
+        // temp zpool can safely be removed.
 
-            //clean up
-            cleanup_zpool(&zpool_name, temp_folder);
+        let test_output = zfs_dataset.list();
 
-            // test the output against expected result.
-            match test_output {
-                Ok(result) => assert_eq!(
-                    result,
-                    vec![Dataset {
-                        dataset: zpool_name
-                    }]
-                ),
-                Err(error) => panic!("list(): Test failed: {:?}", error),
-            }
+        //clean up
+        cleanup_zpool(&zpool_name, temp_folder);
+
+        // test the output against expected result.
+        match test_output {
+            Ok(result) => assert_eq!(
+                result,
+                vec![Dataset {
+                    dataset: zpool_name
+                }]
+            ),
+            Err(error) => panic!("list(): Test failed: {:?}", error),
         }
     }
 
     #[test]
     fn zfs_create_load_unload_key_test() {
-        // This test will only run if there is root persmission
-        if nix::unistd::Uid::effective().is_root() {
-            // generate a temp zpool
-            let (zpool_name, temp_folder) = prepare_zpool();
-
-            // b/c of zpool creation process, the dataset name is the same as zpool
-            let zfs_plan_dataset = Dataset {
-                dataset: zpool_name.clone(),
-            };
-
-            // NOTE: the output will be evaluated **AFTER** clean up so the temp folder and
-            // temp zpool can safely be removed.
-
-            // **TEST 1**: create() on a dataset that is not encrypted
-            // This test is expected to fail!
-            let test_dataset_not_encrypted_must_fail_output =
-                zfs_plan_dataset.create(&random_string(3));
-
-            // **TEST 2**: create() a new encrypted dataset
-            let mut zpool_with_dataset = zpool_name.to_owned();
-            zpool_with_dataset.push('/');
-            zpool_with_dataset.push_str(&random_string(3));
-            let zfs_encrypted_dataset = Dataset {
-                dataset: zpool_with_dataset,
-            };
-            let test_create_new_encrypted_dataset_output =
-                zfs_encrypted_dataset.create(&random_string(8)); // min accepted key is 8 character
-
-            // **TEST 3**: create() on an already encrypted dataset with a known passphrase
-            // ZFS min accepted passphrase is 8 character
-            let passphrase = random_string(8);
-            let test_already_encrypted_dataset_output = zfs_encrypted_dataset.create(&passphrase);
-
-            // **Test 4**: unloadkey() on a mounted dataset
-            // This test is expected to fail!
-            let test_unload_key_mounted_dataset_output = zfs_encrypted_dataset.unloadkey();
-
-            // **Test 5**: unloadkey() on a unmounted dataset
-            zfs_encrypted_dataset
-                .umount()
-                .expect("Test terminated unexpectedly early!");
-            let test_unload_key_unmounted_dataset_output = zfs_encrypted_dataset.unloadkey();
-
-            // **Test 6**: loadkey() on a unmounted dataset
-            let test_load_key_unmounted_dataset_output = zfs_encrypted_dataset.loadkey(&passphrase);
-
-            //clean up
-            cleanup_zpool(&zpool_name, temp_folder);
-
-            // now it is time to test the outputs against expected results.
-
-            // **TEST 1**: create() on a dataset that is not encrypted
-            match test_dataset_not_encrypted_must_fail_output {
-                Ok(_) => panic!("create(): Set a new passphrase on an unencrypted dataset failed!"),
-                Err(error) => assert_eq!(
-                    "Key change error: Dataset not encrypted.\n",
-                    error.to_string()
-                ),
-            }
-
-            // **TEST 2**: create() a new encrypted dataset
-            test_create_new_encrypted_dataset_output
-                .expect("create(): Create new encrypted dataset failed!");
-
-            // **TEST 3**: create() on an already encrypted dataset
-            test_already_encrypted_dataset_output
-                .expect("create(): Set a new passphrase on an encrypted dataset failed!");
-
-            // **Test 4**: unloadkey() on a mounted dataset
-            match test_unload_key_mounted_dataset_output {
-                Ok(_) => panic!("unloadkey() on a mounted dataset failed!"),
-                Err(error) => assert_eq!(
-                    format!(
-                        "Key unload error: '{}' is busy.\n",
-                        zfs_encrypted_dataset.dataset
-                    ),
-                    error.to_string()
-                ),
-            }
-
-            // **Test 5**: unloadkey() on a unmounted dataset
-            test_unload_key_unmounted_dataset_output.expect("unloadkey() failed!");
-
-            // **Test 6**: zfs_loadkey() on a unmounted dataset
-            test_load_key_unmounted_dataset_output.expect("loadkey() failed!");
+        crate::trace_init(false);
+        // This test will only run if there is root permission
+        if !nix::unistd::Uid::effective().is_root() {
+            eprintln!("This test needs root permission. Terminating early!");
+            return;
         }
+
+        // generate a temp zpool
+        let (zpool_name, temp_folder) = prepare_zpool();
+
+        // b/c of zpool creation process, the dataset name is the same as zpool
+        let zfs_plan_dataset = Dataset {
+            dataset: zpool_name.clone(),
+        };
+
+        // NOTE: the output will be evaluated **AFTER** clean up so the temp folder and
+        // temp zpool can safely be removed.
+
+        // **TEST 1**: create() on a dataset that is not encrypted
+        // This test is expected to fail!
+        let test_dataset_not_encrypted_must_fail_output =
+            zfs_plan_dataset.create(&random_string(3));
+
+        // **TEST 2**: create() a new encrypted dataset
+        let mut zpool_with_dataset = zpool_name.to_owned();
+        zpool_with_dataset.push('/');
+        zpool_with_dataset.push_str(&random_string(3));
+        let zfs_encrypted_dataset = Dataset {
+            dataset: zpool_with_dataset,
+        };
+        let test_create_new_encrypted_dataset_output =
+            zfs_encrypted_dataset.create(&random_string(8)); // min accepted key is 8 character
+
+        // **TEST 3**: create() on an already encrypted dataset with a known passphrase
+        // ZFS min accepted passphrase is 8 character
+        let passphrase = random_string(8);
+        let test_already_encrypted_dataset_output = zfs_encrypted_dataset.create(&passphrase);
+
+        // **Test 4**: unloadkey() on a mounted dataset
+        // This test is expected to fail!
+        let test_unload_key_mounted_dataset_output = zfs_encrypted_dataset.unloadkey();
+
+        // **Test 5**: unloadkey() on a unmounted dataset
+        zfs_encrypted_dataset
+            .umount()
+            .expect("Test terminated unexpectedly early!");
+        let test_unload_key_unmounted_dataset_output = zfs_encrypted_dataset.unloadkey();
+
+        // **Test 6**: loadkey() on a unmounted dataset
+        let test_load_key_unmounted_dataset_output = zfs_encrypted_dataset.loadkey(&passphrase);
+
+        //clean up
+        cleanup_zpool(&zpool_name, temp_folder);
+
+        // now it is time to test the outputs against expected results.
+
+        // **TEST 1**: create() on a dataset that is not encrypted
+        match test_dataset_not_encrypted_must_fail_output {
+            Ok(_) => panic!("create(): Set a new passphrase on an unencrypted dataset failed!"),
+            Err(error) => assert_eq!(
+                "Key change error: Dataset not encrypted.\n",
+                error.to_string()
+            ),
+        }
+
+        // **TEST 2**: create() a new encrypted dataset
+        test_create_new_encrypted_dataset_output
+            .expect("create(): Create new encrypted dataset failed!");
+
+        // **TEST 3**: create() on an already encrypted dataset
+        test_already_encrypted_dataset_output
+            .expect("create(): Set a new passphrase on an encrypted dataset failed!");
+
+        // **Test 4**: unloadkey() on a mounted dataset
+        match test_unload_key_mounted_dataset_output {
+            Ok(_) => panic!("unloadkey() on a mounted dataset failed!"),
+            Err(error) => assert_eq!(
+                format!(
+                    "Key unload error: '{}' is busy.\n",
+                    zfs_encrypted_dataset.dataset
+                ),
+                error.to_string()
+            ),
+        }
+
+        // **Test 5**: unloadkey() on a unmounted dataset
+        test_unload_key_unmounted_dataset_output.expect("unloadkey() failed!");
+
+        // **Test 6**: zfs_loadkey() on a unmounted dataset
+        test_load_key_unmounted_dataset_output.expect("loadkey() failed!");
     }
 
     //These tests checks for a reported error on non-existing dataset
     #[test]
     fn dataset_does_not_exists_test() {
+        crate::trace_init(false);
         let zfs_version = Command::new("zpool").arg("version").spawn();
         match zfs_version {
             // Check for ZFS tools and exit early

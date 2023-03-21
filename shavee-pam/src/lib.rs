@@ -3,22 +3,12 @@ mod args;
 #[macro_use]
 extern crate pamsm;
 
-use base64::{
-    alphabet,
-    engine::{general_purpose, GeneralPurpose},
-    Engine,
-};
 use pamsm::{Pam, PamError, PamFlags, PamLibExt, PamServiceModule};
 #[cfg(feature = "file")]
-use shavee_core::filehash;
-use shavee_core::password;
-use shavee_core::zfs::Dataset;
+use shavee_core::{filehash, logic, zfs::Dataset};
 struct PamShavee;
 
 // TODO: Need unit tests implemented for the PAM module functions
-
-const BASE64_ENGINE: GeneralPurpose =
-    GeneralPurpose::new(&alphabet::STANDARD, general_purpose::NO_PAD);
 
 impl PamServiceModule for PamShavee {
     fn open_session(_: Pam, _: PamFlags, _: Vec<String>) -> PamError {
@@ -57,28 +47,41 @@ impl PamServiceModule for PamShavee {
     fn authenticate(pam: Pam, _flags: PamFlags, args: Vec<String>) -> PamError {
         let (umode, dataset, pass) = match parse_pam_args(args, pam) {
             Ok(value) => value,
-            Err(e) => return e,
+            Err(pam_error) => return pam_error,
         };
 
+        let salt = match logic::get_salt(Some(&dataset)) {
+            Ok(salt) => salt,
+            Err(error) => {
+                eprintln!("Error in determining salt: {}", error.to_string());
+                return PamError::INCOMPLETE;
+            }
+        };
+        let password: &[u8] = &pass.into_bytes();
         let result = match umode {
             #[cfg(feature = "yubikey")]
-            args::TwoFactorMode::Yubikey { yslot } => dataset.yubi_unlock(pass, yslot),
+            args::TwoFactorMode::Yubikey { yslot } => dataset.yubi_unlock(password, yslot, &salt),
 
             #[cfg(feature = "file")]
             args::TwoFactorMode::File { file, port, size } => {
-                let filehash = match filehash::get_filehash(file, port, size) {
-                    Ok(error) => error,
+                let filehash = match filehash::get_filehash(&file, port, size) {
+                    Ok(hash) => hash,
                     Err(error) => {
                         eprintln!("Error in generating filehash: {}", error.to_string());
                         return PamError::AUTHINFO_UNAVAIL;
                     }
                 };
-                dataset.file_unlock(pass, filehash)
+                dataset.file_unlock(password, filehash, &salt)
             }
 
             args::TwoFactorMode::Password => {
-                let key = password::hash_argon2(pass.into_bytes()).unwrap();
-                let key = BASE64_ENGINE.encode(key);
+                let key = match logic::password_mode_hash(password, &salt) {
+                    Ok(key) => key,
+                    Err(error) => {
+                        eprintln!("Error in generating password hash: {}", error.to_string());
+                        return PamError::AUTHINFO_UNAVAIL;
+                    }
+                };
                 dataset.pass_unlock(key)
             }
         };

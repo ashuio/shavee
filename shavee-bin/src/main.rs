@@ -1,593 +1,448 @@
-mod args;
+//TODO (Issue #16): Implement clap_config() once it is ported to clap 3.0
+use clap::{crate_authors, crate_description, crate_name, crate_version, App, Arg};
+use shavee_core::zfs::Dataset;
 
-use args::*;
-use base64::{
-    alphabet,
-    engine::{general_purpose, GeneralPurpose},
-    Engine,
-};
-#[cfg(feature = "file")]
-use shavee_core::filehash;
-#[cfg(any(feature = "yubikey", feature = "file"))]
-use shavee_core::logic;
-use shavee_core::password;
-#[cfg(feature = "file")]
-use std::thread;
-
-// main() collect the arguments from command line, pass them to run() and print any
-// messages upon exiting the program
-
-const BASE64_ENGINE: GeneralPurpose =
-    GeneralPurpose::new(&alphabet::STANDARD, general_purpose::NO_PAD);
-
-fn main() {
-    let args = CliArgs::new();
-
-    // Only main() will terminate the executable with proper message and code
-    let code = match run(args) {
-        Ok(None) => 0, // exit with no error code
-        Ok(passphrase) => {
-            println!("{}", passphrase.unwrap()); // print password if asked
-            0 // then exit with no error code
-        }
-        Err(error) => {
-            eprintln!("Error: {}", error); // print error message
-            1 // then exit with generic error code 1
-        }
-    };
-    std::process::exit(code);
+#[derive(Debug, Clone, PartialEq)]
+pub enum TwoFactorMode {
+    #[cfg(feature = "yubikey")]
+    Yubikey {
+        yslot: u8,
+    },
+    #[cfg(feature = "file")]
+    File {
+        file: String,
+        port: Option<u16>,
+        size: Option<u64>,
+    },
+    Password,
 }
 
-fn run(args: CliArgs) -> Result<Option<String>, Box<dyn std::error::Error>> {
-    // pre-initialize the handle and filehash and use them
-    // if multithread is needed for file hash generation
-    // if multithread file hash code is not called then handle must not be used
-    // thus initializing it with an error message.
-    #[cfg(feature = "file")]
-    let mut handle: thread::JoinHandle<Result<Vec<u8>, String>> =
-        thread::spawn(|| Err(String::from(shavee_core::UNREACHABLE_CODE)));
+#[derive(Debug, Clone, PartialEq)]
+pub enum OperationMode {
+    Create { dataset: Dataset },
+    Mount { dataset: Dataset },
+    Print,
+}
+#[derive(Debug, Clone, PartialEq)]
+pub struct CliArgs {
+    pub operation: OperationMode,
+    pub second_factor: TwoFactorMode,
+}
 
-    #[cfg(feature = "file")]
-    let mut filehash: Vec<u8> = vec![]; //empty u8 vector
+/// new() function calls new_from() to parse the arguments
+/// using this method, it is possible to write unit tests for
+/// valid and invalid arguments
+/// Read more at:
+/// "Command line parsing with clap" https://www.fpcomplete.com/rust/command-line-parsing-clap/
+impl CliArgs {
+    pub fn new() -> Self {
+        Self::new_from(std::env::args_os().into_iter()).unwrap_or_else(|e| e.exit())
+    }
 
-    // if in the file 2FA mode, then generate file hash in parallel
-    // while user is entering password
-    #[cfg(feature = "file")]
-    if let TwoFactorMode::File {
-        ref file,
-        ref port,
-        size,
-    } = args.second_factor
+    /// new_from() function parses and validates the inputs
+    fn new_from<I, T>(args: I) -> Result<Self, clap::Error>
+    where
+        I: Iterator<Item = T>,
+        T: Into<std::ffi::OsString> + Clone,
     {
-        let port = port.clone();
-        let file = file.clone();
-        // start the file hash thread
-        handle = thread::spawn(move || {
-            filehash::get_filehash(file, port, size).map_err(|e| e.to_string())
-            // map error to String
-        });
-    };
+        let cli_app = App::new(crate_name!())
+            .about(crate_description!()) // Define APP and args
+            .author(crate_authors!())
+            .version(crate_version!())
+            .arg(
+                Arg::new("create")
+                    .short('c')
+                    .long("create")
+                    .takes_value(false)
+                    .required(false)
+                    .requires("zset")
+                    .next_line_help(true)   // long help description will be printed in the next line
+                    .help("Create/Change key of a ZFS dataset with the derived encryption key. Must be used with --zset"),
+            )
+            .arg(
+                Arg::new("zset")
+                    .short('z')
+                    .long("zset")
+                    .takes_value(true)
+                    .value_name("ZFS dataset")
+                    .required(false)
+                    .next_line_help(true)   // long help description will be printed in the next line
+                    .help("ZFS Dataset eg. \"zroot/data/home\"\n\
+                    If present in conjunction with any of the other options, it will try to unlock and mount the \
+                    given dataset with the derived key instead of printing it. Takes zfs dataset path as argument."),
+            )
+            .arg(
+                Arg::new("yubikey")
+                    .long("yubi")
+                    .short('y')
+                    .help("Use Yubikey HMAC as second factor")
+                    .required(false)
+                    .takes_value(false)
+                    .hide(!cfg!(feature = "yubikey")) // hide it in help if feature is disabled
+                    .conflicts_with("keyfile"), // yubikey xor keyfile, not both.
+            )
+            .arg(
+                Arg::new("slot")
+                    .short('s')
+                    .long("slot")
+                    .help("Yubikey HMAC Slot")
+                    .takes_value(true)
+                    .value_name("HMAC slot")
+                    .possible_values(&["1", "2"]) // putting limit on acceptable inputs
+                    .hide(!cfg!(feature = "yubikey")) // hide it in help if feature is disabled
+                    .required(false)
+                    .requires("yubikey"), // it must be accompanied by yubikey option
+            )
+            .arg(
+                Arg::new("keyfile")
+                    .short('f')
+                    .long("file")
+                    .help("Use any file as second factor, takes filepath, SFTP or a HTTP(S) location as an argument. \
+                    If SIZE is entered, the first SIZE in bytes will be used to generate hash. It must be number between \
+                    1 and 2^(64).")
+                    .hide(!cfg!(feature = "file")) // hide it in help if feature is disabled
+                    .required(false)
+                    .takes_value(true)
+                    .value_name("FILE|ADDRESS [SIZE]")
+                    .max_values(2)
+                    .conflicts_with("yubikey"), // keyfile xor yubikey, not both.
+            )
+            .arg(
+                Arg::new("port")
+                    .short('P')
+                    .long("port")
+                    .takes_value(true)
+                    .value_name("port number")
+                    .hide(!cfg!(feature = "file"))  // hide it in help if feature is disabled
+                    .required(false)
+                    .requires("keyfile")    // port must be accompanied by keyfile option
+                    .validator(shavee_core::port_check)  // validate that port parameter is "valid"
+                    .help("Set port for HTTP(S) and SFTP requests"),
+            );
 
-    // prompt user for password, in case of an error, terminate this function and
-    // return the error to main()
-    let password =
-        rpassword::prompt_password_stderr("Dataset Password: ").map_err(|e| e.to_string())?;
+        // in order to be able to write unit tests, getting the arg matches
+        // shouldn't cause new_from() to exit or panic.
+        let arg = cli_app.try_get_matches_from(args)?;
 
-    // if in the file 2FA mode, then wait for hash generation thread to finish
-    // and unwrap the result. In case of an error, terminate this function and
-    // return error to main().
-    #[cfg(feature = "file")]
-    if let TwoFactorMode::File { .. } = args.second_factor {
-        filehash = handle.join().unwrap()?;
-    };
+        // check for keyfile argument if parse them if needed.
+        // otherwise fill them with None
+        #[cfg(feature = "file")]
+        let (file, size) = match arg.values_of("keyfile") {
+            Some(values) => {
+                // convert the values to a vector
+                let file_size_argument: Vec<&str> = values.collect();
+                shavee_core::parse_file_size_arguments(file_size_argument)?
+            }
+            None => (None, None),
+        };
 
-    // Use this variable as the function return to be used for printing to stdio if needed.
-    let exit_result: Option<String> = match args.operation {
-        OperationMode::Create { dataset } => {
-            match args.second_factor {
-                #[cfg(feature = "yubikey")]
-                TwoFactorMode::Yubikey { yslot } => dataset.yubi_create(password, yslot)?,
-                #[cfg(feature = "file")]
-                TwoFactorMode::File { .. } => dataset.file_create(password, filehash)?,
-                TwoFactorMode::Password => dataset.create(&password_mode_hash(&password)?)?,
-            };
-            None
-        }
-        OperationMode::Mount { dataset } => {
-            match args.second_factor {
-                #[cfg(feature = "yubikey")]
-                TwoFactorMode::Yubikey { yslot } => dataset.yubi_unlock(password, yslot)?,
-                #[cfg(feature = "file")]
-                TwoFactorMode::File { .. } => dataset.file_unlock(password, filehash)?,
-                TwoFactorMode::Password => dataset.pass_unlock(password_mode_hash(&password)?)?,
-            };
-            None
-        }
-        OperationMode::Print => Some(match args.second_factor {
+        // if zset arg is entered, then its value will be used
+        // NOTE: validating dataset is done by zfs module
+        let dataset = match arg.value_of("zset").map(str::to_string) {
+            Some(mut s) => {
+                if s.ends_with("/") {
+                    s.pop();
+                };
+                Some(s)
+            }
+            None => None,
+        };
+
+        // The port arguments are <u16> or None (not entered by user)
+        #[cfg(feature = "file")]
+        let port = arg
+            .value_of("port")
+            .map(|p| p.parse::<u16>().expect(shavee_core::UNREACHABLE_CODE));
+
+        // The accepted slot arguments are Some (1 or 2) or None (not entered by user)
+        // Default value if not entered is 2
+        #[cfg(feature = "yubikey")]
+        let yslot = match arg.value_of("slot") {
+            // exceptions should not happen, because the entry is already validated by clap
+            Some(s) => s.parse::<u8>().expect(shavee_core::UNREACHABLE_CODE),
+            None => 2,
+        };
+
+        let operation = if arg.is_present("create") {
+            let dataset = Dataset::new(dataset.expect(shavee_core::UNREACHABLE_CODE))?;
+            OperationMode::Create { dataset }
+        } else if arg.is_present("zset") {
+            let dataset = Dataset::new(dataset.expect(shavee_core::UNREACHABLE_CODE))?;
+            OperationMode::Mount { dataset }
+        } else {
+            OperationMode::Print
+        };
+
+        // The default mode is Password.
+        #[allow(unused_mut)]
+        let mut second_factor = TwoFactorMode::Password;
+
+        // if yubikey feature is enabled, check for Yubikey 2FA mode.
+        if arg.is_present("yubikey") {
+            if !cfg!(feature = "yubikey") {
+                return Err(clap::Error::raw(
+                    clap::ErrorKind::ArgumentNotFound,
+                    "Yubikey feature is disabled at compile.",
+                ));
+            }
             #[cfg(feature = "yubikey")]
-            TwoFactorMode::Yubikey { yslot } => logic::yubi_key_calculation(password, yslot)?,
+            {
+                second_factor = TwoFactorMode::Yubikey { yslot };
+            }
+        };
+
+        // if file feature is enabled, check for file 2FA mode
+        if arg.is_present("keyfile") {
+            if !cfg!(feature = "file") {
+                return Err(clap::Error::raw(
+                    clap::ErrorKind::ArgumentNotFound,
+                    "File 2FA feature is disabled at compile.",
+                ));
+            }
             #[cfg(feature = "file")]
-            TwoFactorMode::File { .. } => logic::file_key_calculation(password, filehash)?,
-            TwoFactorMode::Password => password_mode_hash(&password)?,
-        }),
-    };
+            {
+                let file = file.expect(shavee_core::UNREACHABLE_CODE);
+                second_factor = TwoFactorMode::File { file, port, size };
+            }
+        };
 
-    Ok(exit_result)
+        Ok(CliArgs {
+            operation,
+            second_factor,
+        })
+    }
 }
 
-fn password_mode_hash(password: &String) -> Result<String, Box<dyn std::error::Error>> {
-    let key = password::hash_argon2(password.clone().into_bytes())?;
-    let passphrase = BASE64_ENGINE.encode(key);
-    Ok(passphrase)
-}
-
+// This section implements unit tests for the functions in this module.
+// Any code change in this module must pass unit tests below.
 #[cfg(test)]
 mod tests {
     use super::*;
-    use shavee_core::zfs::Dataset;
-    use std::io::Write;
-    use stdio_override;
-    use tempfile;
-
     #[test]
-    fn password_mode_hash_test() {
-        let password = String::from("test"); // use "test" as password
-        let passphrase = password_mode_hash(&password)
-            .expect("Couldn't generate the passphrase! Test terminating early!");
+    fn input_args_check() {
+        // defining a struct that will hold input arguments
+        // and their output result
+        struct ArgResultPair<'a> {
+            arg: Vec<&'a str>,
+            result: CliArgs,
+        }
 
-        assert_eq!(
-            passphrase,
-            "LDa6mHK4xmv37cqoG8B+9M/ZIaEPLDhPQER6nuP7dw8mB1MoKoRkgZCbUNRwXvGwG2UkfWJUUEVOfWzUCCb8JA");
-        // expected output for "test" password
-    }
-
-    #[test]
-    fn integration_tests() {
-        // All integration tests will be executed sequentially
-
-        // **Integration Test**: Print Password
-        {
-            // construct the needed Struct related to this unit test
-            let print_password = CliArgs {
-                operation: OperationMode::Print,
-                second_factor: TwoFactorMode::Password,
-            };
-
-            // use a temp file to override stdin for password entry
-            let mut password_file = tempfile::NamedTempFile::new()
-                .expect("Couldn't make a temp file! Test terminating early!");
-
-            // generate the temp file and fill it with the password
-            // and feed "test" as password
-            password_file
-                .write_all(b"test")
-                .expect("Couldn't write to the temp file! Test terminating early!");
-
-            let password_file_path = password_file.into_temp_path();
-            let password_file_path = password_file_path
-                .to_str()
-                .expect("Unknown temp file path! Test terminating early!");
-
-            // feed password_file to stdin
-            let stdin_guard = stdio_override::StdinOverride::override_file(password_file_path);
-
-            // **Integration Test** run() function and capture its stdout output
-            let output = run(print_password);
-
-            // release stdin back to normal
-            drop(stdin_guard);
-            //clean up the temp files
-            drop(password_file_path);
-
-            // **Integration test** check for graceful execution
-            let output = output.unwrap().unwrap();
-
-            // verify stdout with the expected result
-            assert_eq!(
-            output,
-            "LDa6mHK4xmv37cqoG8B+9M/ZIaEPLDhPQER6nuP7dw8mB1MoKoRkgZCbUNRwXvGwG2UkfWJUUEVOfWzUCCb8JA");
-            // expected output for "test" input
-        } // END **Integration Test**: Print Password
-
-        // **Integration Test**: Print File
-        #[cfg(feature = "file")]
-        {
-            // construct the needed Struct related to this unit test
-            let print_file = CliArgs {
-                operation: OperationMode::Print,
-                second_factor: TwoFactorMode::File {
-                    file: String::from("/dev/zero"), // Zeros
-                    size: Some(1 << 8),
-                    port: None,
+        // each entry of the array holds the input/output struct
+        let valid_arguments_results_pairs = [
+            ArgResultPair {
+                arg: vec![], // no argument
+                result: CliArgs {
+                    operation: OperationMode::Print,
+                    second_factor: TwoFactorMode::Password,
                 },
-            };
-
-            // use a temp file to override stdin for password entry
-            let mut password_file = tempfile::NamedTempFile::new()
-                .expect("Couldn't make a temp file! Test terminating early!");
-
-            // generate the temp file and fill it with the password
-            // and feed "test" as password
-            password_file
-                .write_all(b"test")
-                .expect("Couldn't write to the temp file! Test terminating early!");
-
-            let password_file_path = password_file.into_temp_path();
-            let password_file_path = password_file_path
-                .to_str()
-                .expect("Unknown temp file path! Test terminating early!");
-
-            // feed password_file to stdin
-            let stdin_guard = stdio_override::StdinOverride::override_file(password_file_path);
-
-            // **Integration Test** run() function and capture its stdout output
-            let output = run(print_file);
-
-            // release stdin back to normal
-            drop(stdin_guard);
-            //clean up the temp files
-            drop(password_file_path);
-
-            // **Integration test** check for graceful execution
-            let output = output.unwrap().unwrap();
-
-            // verify stdout with the expected result
-            assert_eq!(
-            output,
-            "oenvfi3+jMSy5kuOzbKzfAsBNi/jHFuD510Q43zJhVNJaBi35mvXEqeUPzdarV1mAlhkFG1C7NJ5/mEAWNOpgg");
-            // expected output for "test" input
-        } // END **Integration Test**: Print File
-
-        // **Integration Test**: Create from password then mount it
-        // This test will only run if there is root persmission
-        if nix::unistd::Uid::effective().is_root() {
-            let (zpool_name, temp_folder) = prepare_zpool();
-
-            let mut zpool_with_dataset = zpool_name.to_owned();
-            zpool_with_dataset.push('/');
-            zpool_with_dataset.push_str(&random_string(3));
-            let zfs_encrypted_dataset =
-                Dataset::new(zpool_with_dataset).expect("ZFS name problem. Test terminated early!");
-
-            //Output of the Integration test will be stored in these variables to be validated
-            let create_password_output;
-            let mount_password_output;
-            let mount_key_already_loaded_output;
-
-            // **Integration Test**: create a new encrypted dataset from file
-            {
-                // construct the needed Struct related to this unit test
-                let create_password = CliArgs {
-                    operation: OperationMode::Create {
-                        dataset: zfs_encrypted_dataset.clone(),
-                    },
-                    second_factor: TwoFactorMode::Password,
-                };
-
-                // use a temp file to override stdin for password entry
-                let mut password_file = tempfile::NamedTempFile::new()
-                    .expect("Couldn't make a temp file! Test terminating early!");
-
-                // generate the temp file and fill it with the password
-                // and feed "test" as password
-                password_file
-                    .write_all(b"test")
-                    .expect("Couldn't write to the temp file! Test terminating early!");
-
-                let password_file_path = password_file.into_temp_path();
-                let password_file_path = password_file_path
-                    .to_str()
-                    .expect("Unknown temp file path! Test terminating early!");
-
-                // feed password_file to stdin
-                let stdin_guard = stdio_override::StdinOverride::override_file(password_file_path);
-
-                // **Integration Test** run() function and capture its stdout output
-                create_password_output = run(create_password);
-
-                // release stdin back to normal
-                drop(stdin_guard);
-                //clean up the temp files
-                drop(password_file_path);
-
-                //umount and unload the ZFS key
-                zfs_encrypted_dataset
-                    .umount()
-                    .expect("ZFS Dataset create from file Integration test failed!")
-                    .unloadkey()
-                    .expect("ZFS Dataset create from file Integration test failed!");
-            } // END of **Integration Test 1**: create a new encrypted dataset from password
-
-            // **Integration Test**: mount an encrypted dataset from password
-            {
-                // construct the needed Struct related to this unit test
-                let mount_password = CliArgs {
+            },
+            ArgResultPair {
+                arg: vec!["-z", "zroot/test"], // -z zroot/test
+                result: CliArgs {
                     operation: OperationMode::Mount {
-                        dataset: zfs_encrypted_dataset.clone(),
+                        dataset: Dataset::new("zroot/test".to_string()).unwrap(),
                     },
                     second_factor: TwoFactorMode::Password,
-                };
+                },
+            },
+            ArgResultPair {
+                arg: vec!["-c", "-z", "zroot/test"], // -c -z zroot/test
+                result: CliArgs {
+                    operation: OperationMode::Create {
+                        dataset: Dataset::new("zroot/test".to_string()).unwrap(),
+                    },
+                    second_factor: TwoFactorMode::Password,
+                },
+            },
+            ArgResultPair {
+                arg: vec!["--create", "--zset", "zroot/test/"], // --create --zset zroot/test/
+                result: CliArgs {
+                    operation: OperationMode::Create {
+                        dataset: Dataset::new("zroot/test".to_string()).unwrap(),
+                    },
+                    second_factor: TwoFactorMode::Password,
+                },
+            },
+            #[cfg(feature = "yubikey")]
+            ArgResultPair {
+                arg: vec!["-y", "-s", "1", "-c", "-z", "zroot/test/"], // -y -s 1 -c -z zroot/test/
+                result: CliArgs {
+                    operation: OperationMode::Create {
+                        dataset: Dataset::new("zroot/test".to_string()).unwrap(),
+                    },
+                    second_factor: TwoFactorMode::Yubikey { yslot: 1 },
+                },
+            },
+            #[cfg(feature = "yubikey")]
+            ArgResultPair {
+                arg: vec!["-y"], // -y
+                result: CliArgs {
+                    operation: OperationMode::Print,
+                    second_factor: TwoFactorMode::Yubikey { yslot: 2 },
+                },
+            },
+            #[cfg(feature = "yubikey")]
+            ArgResultPair {
+                arg: vec!["-y", "-s", "1"], // -y -s 1
+                result: CliArgs {
+                    operation: OperationMode::Print,
+                    second_factor: TwoFactorMode::Yubikey { yslot: 1 },
+                },
+            },
+            #[cfg(feature = "yubikey")]
+            ArgResultPair {
+                arg: vec!["--yubi", "--slot", "2"], // --yubi --slot 2
+                result: CliArgs {
+                    operation: OperationMode::Print,
+                    second_factor: TwoFactorMode::Yubikey { yslot: 2 },
+                },
+            },
+            #[cfg(feature = "file")]
+            ArgResultPair {
+                // test entry for size argument
+                arg: vec!["--file", "./shavee", "2048"], // --file ./shavee 2048
+                result: CliArgs {
+                    operation: OperationMode::Print,
+                    second_factor: TwoFactorMode::File {
+                        file: String::from("./shavee"),
+                        port: None,
+                        size: Some(2048),
+                    },
+                },
+            },
+            #[cfg(feature = "file")]
+            ArgResultPair {
+                // test entry for size argument
+                arg: vec!["--port", "80", "-f", "./shavee", "4096"], // --port 80 --file ./shavee 4096
+                result: CliArgs {
+                    operation: OperationMode::Print,
+                    second_factor: TwoFactorMode::File {
+                        file: String::from("./shavee"),
+                        port: Some(80),
+                        size: Some(4096),
+                    },
+                },
+            },
+            #[cfg(feature = "file")]
+            ArgResultPair {
+                arg: vec!["--file", "./shavee"], // --file ./shavee
+                result: CliArgs {
+                    operation: OperationMode::Print,
+                    second_factor: TwoFactorMode::File {
+                        file: String::from("./shavee"),
+                        port: None,
+                        size: None,
+                    },
+                },
+            },
+            #[cfg(feature = "file")]
+            ArgResultPair {
+                arg: vec!["--port", "80", "-f", "./shavee"], // --port 80 --file ./shavee
+                result: CliArgs {
+                    operation: OperationMode::Print,
+                    second_factor: TwoFactorMode::File {
+                        file: String::from("./shavee"),
+                        port: Some(80),
+                        size: None,
+                    },
+                },
+            },
+            #[cfg(feature = "file")]
+            ArgResultPair {
+                arg: vec!["-P", "443", "-f", "./shavee"], // -P 443 --file ./shavee
+                result: CliArgs {
+                    operation: OperationMode::Print,
+                    second_factor: TwoFactorMode::File {
+                        file: String::from("./shavee"),
+                        port: Some(443),
+                        size: None,
+                    },
+                },
+            },
+            #[cfg(feature = "file")]
+            ArgResultPair {
+                arg: vec!["-f", "./shavee", "-z", "zroot/test"], // -f ./shavee -z zroot/test
+                result: CliArgs {
+                    operation: OperationMode::Mount {
+                        dataset: Dataset::new("zroot/test".to_string()).unwrap(),
+                    },
+                    second_factor: TwoFactorMode::File {
+                        file: String::from("./shavee"),
+                        port: None,
+                        size: None,
+                    },
+                },
+            },
+        ];
 
-                // use a temp file to override stdin for password entry
-                let mut password_file = tempfile::NamedTempFile::new()
-                    .expect("Couldn't make a temp file! Test terminating early!");
-
-                // generate the temp file and fill it with the password
-                // and feed "test" as password
-                password_file
-                    .write_all(b"test")
-                    .expect("Couldn't write to the temp file! Test terminating early!");
-
-                let password_file_path = password_file.into_temp_path();
-                let password_file_path = password_file_path
-                    .to_str()
-                    .expect("Unknown temp file path! Test terminating early!");
-
-                // feed password_file to stdin
-                let stdin_guard = stdio_override::StdinOverride::override_file(password_file_path);
-
-                // **Integration Test** run() function and capture its stdout output
-                mount_password_output = run(mount_password.clone());
-
-                //umount the ZFS only
-                zfs_encrypted_dataset
-                    .umount()
-                    .expect("ZFS Dataset Mount from file Integration test failed!");
-
-                // [Issue #22] try to mount again this time with key already loaded
-                mount_key_already_loaded_output = run(mount_password);
-
-                // unload the ZFS key
-                zfs_encrypted_dataset
-                    .unloadkey()
-                    .expect("ZFS Dataset unload key failed!");
-
-                // release stdin back to normal
-                drop(stdin_guard);
-                //clean up the temp files
-                drop(password_file_path);
-            } // END of **Integration Test**: mount an encrypted dataset from password
-
-            //clean up and remove the dataset folder
-            cleanup_zpool(&zpool_name, temp_folder);
-
-            // **Integration Test** check for graceful execution
-            let create_output = create_password_output
-                .expect("ZFS Dataset create from Password Integration test failed!");
-
-            // **Integration Test** check for graceful execution
-            let mount_output = mount_password_output
-                .expect("ZFS Dataset mount from Password Integration test failed!");
-
-            let key_already_loaded_output = mount_key_already_loaded_output
-                .expect_err("ZFS Dataset mount on an already loaded key Integration test failed!")
-                .to_string();
-
-            // **Integration Test** verify stdout with the expected result
-            assert_eq!(create_output, None);
-            assert_eq!(mount_output, None);
+        for index in 0..valid_arguments_results_pairs.len() {
+            let mut args = Vec::new();
+            //note: the first argument is always the executable name: crate_name!()
+            args.push(crate_name!());
+            args.extend(valid_arguments_results_pairs[index].arg.clone());
             assert_eq!(
-                key_already_loaded_output,
-                format!(
-                    "Key load error: Key already loaded for '{}'.\n",
-                    zfs_encrypted_dataset.to_string()
-                )
+                CliArgs::new_from(args.iter()).unwrap(),
+                valid_arguments_results_pairs[index].result
             );
-        } //END  **Integration Test**: Create from File then mount it
-
-        // **Integration Test**: Create from File then mount it
-        // This test will only run if there is root persmission
-        #[cfg(feature = "file")]
-        if nix::unistd::Uid::effective().is_root() {
-            let (zpool_name, temp_folder) = prepare_zpool();
-
-            let mut zpool_with_dataset = zpool_name.to_owned();
-            zpool_with_dataset.push('/');
-            zpool_with_dataset.push_str(&random_string(3));
-            let zfs_encrypted_dataset =
-                Dataset::new(zpool_with_dataset).expect("ZFS name problem. Test terminated early!");
-
-            //Output of the Integration test will be stored in these variables to be validated
-            let create_file_output;
-            let mount_file_output;
-
-            // **Integration Test**: create a new encrypted dataset from file
-            {
-                // construct the needed Struct related to this unit test
-                let create_file = CliArgs {
-                    operation: OperationMode::Create {
-                        dataset: zfs_encrypted_dataset.clone(),
-                    },
-                    second_factor: TwoFactorMode::File {
-                        file: String::from("/dev/zero"), // Zeros
-                        size: Some(1 << 8),
-                        port: None,
-                    },
-                };
-
-                // use a temp file to override stdin for password entry
-                let mut password_file = tempfile::NamedTempFile::new()
-                    .expect("Couldn't make a temp file! Test terminating early!");
-
-                // generate the temp file and fill it with the password
-                // and feed "test" as password
-                password_file
-                    .write_all(b"test")
-                    .expect("Couldn't write to the temp file! Test terminating early!");
-
-                let password_file_path = password_file.into_temp_path();
-                let password_file_path = password_file_path
-                    .to_str()
-                    .expect("Unknown temp file path! Test terminating early!");
-
-                // feed password_file to stdin
-                let stdin_guard = stdio_override::StdinOverride::override_file(password_file_path);
-
-                // **Integration Test** run() function and capture its stdout output
-                create_file_output = run(create_file);
-
-                // release stdin back to normal
-                drop(stdin_guard);
-                //clean up the temp files
-                drop(password_file_path);
-
-                //umount and unload the ZFS key
-                zfs_encrypted_dataset
-                    .umount()
-                    .expect("ZFS Dataset create from file Integration test failed!")
-                    .unloadkey()
-                    .expect("ZFS Dataset create from file Integration test failed!");
-            } // END of **Integration Test 1**: create a new encrypted dataset from file
-
-            // **Integration Test**: mount an encrypted dataset from file
-            {
-                // construct the needed Struct related to this unit test
-                let mount_file = CliArgs {
-                    operation: OperationMode::Mount {
-                        dataset: zfs_encrypted_dataset.clone(),
-                    },
-                    second_factor: TwoFactorMode::File {
-                        file: String::from("/dev/zero"), // Zeros
-                        size: Some(1 << 8),
-                        port: None,
-                    },
-                };
-
-                // use a temp file to override stdin for password entry
-                let mut password_file = tempfile::NamedTempFile::new()
-                    .expect("Couldn't make a temp file! Test terminating early!");
-
-                // generate the temp file and fill it with the password
-                // and feed "test" as password
-                password_file
-                    .write_all(b"test")
-                    .expect("Couldn't write to the temp file! Test terminating early!");
-
-                let password_file_path = password_file.into_temp_path();
-                let password_file_path = password_file_path
-                    .to_str()
-                    .expect("Unknown temp file path! Test terminating early!");
-
-                // feed password_file to stdin
-                let stdin_guard = stdio_override::StdinOverride::override_file(password_file_path);
-
-                // **Integration Test** run() function and capture its stdout output
-                mount_file_output = run(mount_file);
-
-                // release stdin back to normal
-                drop(stdin_guard);
-                //clean up the temp files
-                drop(password_file_path);
-
-                //umount and unload the ZFS key
-                zfs_encrypted_dataset
-                    .umount()
-                    .expect("ZFS Dataset create from file Integration test failed!")
-                    .unloadkey()
-                    .expect("ZFS Dataset create from file Integration test failed!");
-            } // END of **Integration Test**: mount an encrypted dataset from file
-
-            //clean up and remove the dataset folder
-            cleanup_zpool(&zpool_name, temp_folder);
-
-            // **Integration Test** check for graceful execution
-            let create_output =
-                create_file_output.expect("ZFS Dataset create from file Integration test failed!");
-
-            // **Integration Test** check for graceful execution
-            let mount_output =
-                mount_file_output.expect("ZFS Dataset mount from file Integration test failed!");
-
-            // **Integration Test** verify stdout with the expected result
-            assert_eq!(create_output, None);
-            assert_eq!(mount_output, None);
-        } //END  **Integration Test**: Create from File then mount it
-
-        // TODO: Integration test for Yubikey modes are not implemented.
-    } // END all Integration Tests
-
-    /**********************************************************************
-     *  In this this section the supporting functions that are needed for *
-     *  Integration and unit tests are implemented.                       *
-     *********************************************************************/
-
-    fn random_string(length: u8) -> String {
-        use random_string::generate;
-
-        // for maximum compatibility limit the random character to ASCII alphabets
-        let charset: &str = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ";
-        generate(length as usize, charset)
-    }
-
-    // this function generates a temp folder and a zpool with a random name.
-    fn prepare_zpool() -> (String, std::path::PathBuf) {
-        // For ZFS related unit tests need root permission
-        // Check for root permission and exit early
-        if !nix::unistd::Uid::effective().is_root() {
-            panic!("Root permission is needed for integration tests! Tests terminated early!");
         }
 
-        // Check for ZFS tools and exit early
-        std::process::Command::new("zpool")
-            .arg("version")
-            .spawn()
-            .expect("ZFS and ZPOOL tools must be installed. Test terminated early!");
+        // For the invalid arguments, there is no output struct and we only check for error
 
-        // make a temp folder in the system temp directory
-        // this temp folder will be automatically deleted at the end of unit test
-        let temp_folder = tempfile::tempdir()
-            .expect("Couldn't make a temp folder! Test terminated early!")
-            .into_path();
+        let invalid_arguments = [
+            vec!["--zset"],   // --zset
+            vec!["-P"],       // -P
+            vec!["-c"],       // -c
+            vec!["--create"], // --create
+            #[cfg(feature = "yubikey")]
+            vec!["-s"], // -s
+            #[cfg(feature = "yubikey")]
+            vec!["--slot"], // --slot
+            #[cfg(feature = "yubikey")]
+            vec!["--slot", "2"], // --slot 2
+            #[cfg(feature = "yubikey")]
+            vec!["-y", "-s", "3"], // -y -s 3
+            #[cfg(feature = "file")]
+            vec!["--file"], // --file
+            #[cfg(feature = "file")]
+            vec!["-f"], // -f
+            #[cfg(feature = "file")]
+            vec!["--port", "80"], // --port 80
+            #[cfg(feature = "file")]
+            vec!["-z"], // -z
+            #[cfg(feature = "file")]
+            vec!["-P", "0", "-f", "./shavee"], // -P 0 -f ./shavee
+            #[cfg(any(feature = "file", feature = "yubikey"))]
+            vec!["-y", "-f", "./shavee"], // -y -f ./shavee
+            // The following tests that error is returned when yubikey 2fa is disabled at compile
+            #[cfg(not(feature = "yubikey"))]
+            vec!["-y", "-s", "1", "-c", "-z", "zroot/test/"], // -y -s 1 -c -z zroot/test/
+            #[cfg(not(feature = "yubikey"))]
+            vec!["-y"], // -y
+            #[cfg(not(feature = "yubikey"))]
+            vec!["-y", "-s", "1"], // -y -s 1
+            #[cfg(not(feature = "yubikey"))]
+            vec!["--yubi", "--slot", "2"], // --yubi --slot 2
+            // The following tests that error is returned when file 2fa is disabled at compile
+            #[cfg(not(feature = "file"))]
+            vec!["--file", "./shavee", "2048"], // --file ./shavee 2048
+            #[cfg(not(feature = "file"))]
+            vec!["--port", "80", "-f", "./shavee", "4096"], // --port 80 --file ./shavee 4096
+            #[cfg(not(feature = "file"))]
+            vec!["--file", "./shavee"], // --file ./shavee
+            #[cfg(not(feature = "file"))]
+            vec!["--port", "80", "-f", "./shavee"], // --port 80 --file ./shavee
+            #[cfg(not(feature = "file"))]
+            vec!["-P", "443", "-f", "./shavee"], // -P 443 --file ./shavee
+            #[cfg(not(feature = "file"))]
+            vec!["-f", "./shavee", "-z", "zroot/test"], // -f ./shavee -z zroot/test
+        ];
 
-        // Use a random name to avoid modifying an existing ZFS pool and dataset
-        let zpool_name = random_string(30);
-
-        // Use a random mount point for Zpool alt_root
-        let mut zpool_alt_root = temp_folder.clone();
-        zpool_alt_root.push(random_string(5));
-
-        let mut zpool_path = temp_folder.clone();
-        zpool_path.push(zpool_name.clone());
-
-        // Generate a 512MB file which will be used as ZFS pool vdev
-        std::process::Command::new("truncate")
-            .arg("--size")
-            .arg("512M")
-            .arg(&zpool_path)
-            .spawn()
-            .expect("Cannot generate a temp file. Test terminated early!");
-
-        // create a new temporarily zpool using vdev
-        let command_output = std::process::Command::new("zpool")
-            .arg("create")
-            .arg(&zpool_name)
-            .arg(&zpool_path)
-            .arg("-R")
-            .arg(zpool_alt_root)
-            .status()
-            .expect("Zpool creation failed! Test terminated early!");
-
-        if !command_output.success() {
-            panic!("Zpool creation failed! Test terminated early!");
+        for index in 0..invalid_arguments.len() {
+            let mut args = Vec::new();
+            //note: the first argument is always the executable name: crate_name!()
+            args.push(crate_name!());
+            args.extend(invalid_arguments[index].clone());
+            CliArgs::new_from(args.iter()).unwrap_err();
         }
-
-        (zpool_name, temp_folder)
-    }
-
-    // this function removes zpool and cleans up the temp folder.
-    fn cleanup_zpool(zpool_name: &str, temp_folder: std::path::PathBuf) {
-        let command_output = std::process::Command::new("zpool")
-            .arg("export")
-            .arg(zpool_name)
-            .status()
-            .expect("Failed to export Zpool!");
-        if !command_output.success() {
-            panic!("Failed to export Zpool!");
-        }
-        std::process::Command::new("rm")
-            .arg("-rf")
-            .arg(temp_folder)
-            .spawn()
-            .expect("Temp folder clean up failed!");
     }
 }

@@ -1,6 +1,6 @@
 [package]
 name = "shavee"
-version = "0.5.2"
+version = "0.6.0"
 authors = ["Ashutosh Verma <shavee@ashu.io>"]
 edition = "2018"
 license = "MIT"
@@ -11,19 +11,19 @@ readme = "README.md"
 repository = "https://github.com/ashuio/shavee"
 
 [features]
-default = ["file", "yubikey"]
-yubikey = []
-file = []
+default = ["file", "yubikey"]  # select the features to be included in the binary
+yubikey = []    # Yubikey feature
+file = []       # File 2FA feature
 
 [dependencies]
+shavee_core = {path = "../shavee-core"}
 sha2 = "0.10.6"
 clap = { version = "3", features = ["cargo"] }
 rpassword = "5.0.1"
 base64 = "0.21.0"
-shavee_core = { path = "../shavee-core" }
 
 [dev-dependencies]
-stdio-override = "0"
-tempfile = "*"
-nix = "0"
+stdio-override = "0.1"
+tempfile = "3.4"
+nix = "0.26"
 random-string = "1"

@@ -72,8 +72,11 @@ If no second factor is specified the program will use only password as a single 
 ```bash 
 git clone https://github.com/ashuio/shavee.git 
 ```
-
-3. Build using
+   * [Optional] Enable or diasable `yubikey` and `file` feature by modifying `shavee-bin` [`Cargo.toml`](https://github.com/ashuio/shavee/blob/master/shavee-bin/Cargo.toml) to include or remove those features from the compiled binary.
+   * [Optional] Enable or disable verbose debug `trace` logs by modifying `shavee-core` [`Cargo.toml`](https://github.com/ashuio/shavee/blob/master/shavee-core/Cargo.toml) to include or remove that feature from the compiled binary.
+     * If `trace` log feature is enabled, `RUST_LOG=trace` environment variable must also be set to generate logs. Otherwise no log will be generaged.
+    **NOTE: Enabling the trace logs, will increase the binary size and may expose the passphrase in the output logs. ONLY ENABLE IT FOR DEBUGGING PURPOSE AND DISABLE IT IN THE FINAL BINARY!**
+3. Build using the binary
 ```bash
 cargo build --release 
 ```
