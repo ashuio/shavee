@@ -29,17 +29,17 @@ pub struct CliArgs {
     pub second_factor: TwoFactorMode,
 }
 
+/// new() function calls new_from() to parse the arguments
+/// using this method, it is possible to write unit tests for
+/// valid and invalid arguments
+/// Read more at:
+/// "Command line parsing with clap" https://www.fpcomplete.com/rust/command-line-parsing-clap/
 impl CliArgs {
-    // new() function calls new_from() to parse the arguments
-    // using this method, it is possible to write unit tests for
-    // valid and invalid arguments
-    // Read more at:
-    // "Command line parsing with clap" https://www.fpcomplete.com/rust/command-line-parsing-clap/
     pub fn new() -> Self {
         Self::new_from(std::env::args_os().into_iter()).unwrap_or_else(|e| e.exit())
     }
 
-    // new_from() function parses and validates the inputs
+    /// new_from() function parses and validates the inputs
     fn new_from<I, T>(args: I) -> Result<Self, clap::Error>
     where
         I: Iterator<Item = T>,
@@ -220,7 +220,7 @@ mod tests {
     use super::*;
     #[test]
     fn input_args_check() {
-        // defining a struct that will hold intput arguments
+        // defining a struct that will hold input arguments
         // and their output result
         struct ArgResultPair<'a> {
             arg: Vec<&'a str>,
