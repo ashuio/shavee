@@ -21,6 +21,7 @@ pub enum TwoFactorMode {
 pub enum OperationMode {
     Create { dataset: Dataset },
     Mount { dataset: Dataset },
+    PrintDataset { dataset: Dataset },
     Print,
 }
 #[derive(Debug, Clone, PartialEq)]
@@ -92,6 +93,24 @@ impl CliArgs {
                     .hide(!cfg!(feature = "yubikey")) // hide it in help if feature is disabled
                     .required(false)
                     .requires("yubikey"), // it must be accompanied by yubikey option
+            )
+            .arg(
+                Arg::new("print")
+                    .short('p')
+                    .long("print")
+                    .help("Print Secret key for a Dataset")
+                    .takes_value(false)
+                    .required(false)
+                    .requires("zset")
+            )
+            .arg(
+                Arg::new("mount")
+                    .short('m')
+                    .long("mount")
+                    .help("Unlock and Mount Dataset")
+                    .takes_value(false)
+                    .required(false)
+                    .requires("zset")
             )
             .arg(
                 Arg::new("keyfile")
@@ -166,9 +185,12 @@ impl CliArgs {
         let operation = if arg.is_present("create") {
             let dataset = Dataset::new(dataset.expect(shavee_core::UNREACHABLE_CODE))?;
             OperationMode::Create { dataset }
-        } else if arg.is_present("zset") {
+        } else if arg.is_present("mount") {
             let dataset = Dataset::new(dataset.expect(shavee_core::UNREACHABLE_CODE))?;
             OperationMode::Mount { dataset }
+        } else if arg.is_present("print") {
+            let dataset = Dataset::new(dataset.expect(shavee_core::UNREACHABLE_CODE))?;
+            OperationMode::PrintDataset { dataset }
         } else {
             OperationMode::Print
         };

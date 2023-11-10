@@ -122,6 +122,27 @@ fn run(args: CliArgs) -> Result<Option<String>, Box<dyn std::error::Error>> {
             };
             None
         }
+        OperationMode::PrintDataset { dataset } => {
+            shavee_core::trace(&format!(
+                "\tPrint Secret key for \"{}\".",
+                dataset.to_string()
+            ));
+            let salt = shavee_core::logic::get_salt(Some(&dataset))?;
+            let passphrase = match args.second_factor {
+                #[cfg(feature = "yubikey")]
+                TwoFactorMode::Yubikey { yslot } => {
+                    shavee_core::logic::yubi_key_calculation(password, yslot, &salt)?
+                }
+                #[cfg(feature = "file")]
+                TwoFactorMode::File { .. } => {
+                    shavee_core::logic::file_key_calculation(&password, filehash, &salt)?
+                }
+                TwoFactorMode::Password => {
+                    shavee_core::logic::password_mode_hash(&password, &salt)?
+                }
+            };
+            Some(passphrase)
+        }
         OperationMode::Print => {
             shavee_core::trace("\tGenerate password.");
             let salt = shavee_core::logic::get_salt(None)?;

@@ -1,4 +1,4 @@
-use argon2::{Config, ThreadMode, Variant, Version};
+use argon2::{Config, Variant, Version};
 
 /// Generates hash of the password + salt
 pub fn hash_argon2(password: &[u8], salt: &[u8]) -> Result<Vec<u8>, argon2::Error> {
@@ -12,11 +12,11 @@ pub fn hash_argon2(password: &[u8], salt: &[u8]) -> Result<Vec<u8>, argon2::Erro
         mem_cost: 65536,
         time_cost: 1,
         lanes: 4,
-        thread_mode: ThreadMode::Parallel,
         secret: &[],
         ad: &[],
         hash_length: 64,
     };
+
     // return the hash value but convert the error to Box<dyn>
     argon2::hash_raw(password, salt, &config)
 }
