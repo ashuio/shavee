@@ -60,12 +60,10 @@ fn run(args: CliArgs) -> Result<Option<String>, Box<dyn std::error::Error>> {
             shavee_core::filehash::get_filehash(&file, port, size).map_err(|e| e.to_string())
             // map error to String
         });
-    };
-
+    }
     // prompt user for password, in case of an error, terminate this function and
     // return the error to main()
-    let binding =
-        rpassword::prompt_password_stderr("Dataset Password: ").map_err(|e| e.to_string())?;
+    let binding = rpassword::prompt_password("Dataset Password: ").map_err(|e| e.to_string())?;
     let password = binding.as_bytes();
     shavee_core::trace("Password has entered successfully.");
 
@@ -76,7 +74,7 @@ fn run(args: CliArgs) -> Result<Option<String>, Box<dyn std::error::Error>> {
     if let TwoFactorMode::File { .. } = args.second_factor {
         filehash = handle.join().unwrap()?;
         shavee_core::trace("File is hashed successfully");
-    };
+    }
 
     shavee_core::trace("Operation Mode:");
     // Use this variable as the function return to be used for printing to stdio if needed.
@@ -103,7 +101,7 @@ fn run(args: CliArgs) -> Result<Option<String>, Box<dyn std::error::Error>> {
                         &base64::Engine::encode(&shavee_core::logic::BASE64_ENGINE, salt),
                     )?;
                 }
-            };
+            }
             None
         }
         OperationMode::Mount { dataset } => {
@@ -119,7 +117,7 @@ fn run(args: CliArgs) -> Result<Option<String>, Box<dyn std::error::Error>> {
                 TwoFactorMode::File { .. } => dataset.file_unlock(password, filehash, &salt)?,
                 TwoFactorMode::Password => dataset
                     .pass_unlock(shavee_core::logic::password_mode_hash(&password, &salt)?)?,
-            };
+            }
             None
         }
         OperationMode::PrintDataset { dataset } => {
@@ -219,8 +217,9 @@ mod tests {
 
             // verify stdout with the expected result
             assert_eq!(
-            output,
-            "LDa6mHK4xmv37cqoG8B+9M/ZIaEPLDhPQER6nuP7dw8mB1MoKoRkgZCbUNRwXvGwG2UkfWJUUEVOfWzUCCb8JA");
+                output,
+                "LDa6mHK4xmv37cqoG8B+9M/ZIaEPLDhPQER6nuP7dw8mB1MoKoRkgZCbUNRwXvGwG2UkfWJUUEVOfWzUCCb8JA"
+            );
             // expected output for "test" input
         } // END **Integration Test**: Print Password
 
@@ -268,8 +267,9 @@ mod tests {
 
             // verify stdout with the expected result
             assert_eq!(
-            output,
-            "oenvfi3+jMSy5kuOzbKzfAsBNi/jHFuD510Q43zJhVNJaBi35mvXEqeUPzdarV1mAlhkFG1C7NJ5/mEAWNOpgg");
+                output,
+                "oenvfi3+jMSy5kuOzbKzfAsBNi/jHFuD510Q43zJhVNJaBi35mvXEqeUPzdarV1mAlhkFG1C7NJ5/mEAWNOpgg"
+            );
             // expected output for "test" input
         } // END **Integration Test**: Print File
 
@@ -399,7 +399,7 @@ mod tests {
                 mount_key_already_loaded_output = run(mount_password);
                 shavee_core::trace(&format!(
                     "Output of the cli command: {:?}",
-                    mount_key_already_loaded_output,
+                    mount_key_already_loaded_output
                 ));
 
                 // unload the ZFS key

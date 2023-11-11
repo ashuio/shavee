@@ -1,6 +1,6 @@
 [package]
 name = "shavee_core"
-version = "0.6.0"
+version = "0.6.1"
 edition = "2018"
 
 
@@ -10,16 +10,16 @@ trace = ["dep:env_logger", "dep:log"]
 
 [dependencies]
 yubico_manager = "0.9.0"
-sha2 = "0.10.6"
+sha2 = "0.10.8"
 curl = "0.4.44"
 rust-argon2 = "2.0.0"
-base64 = "0.21.0"
-clap = { version = "3" , features = ["cargo"] }
+base64 = "0.21.5"
+clap = { version = "3", features = ["cargo"] }
 rand = "0.8.5"
-log = {version = "0.4.17", optional = true}
-env_logger = {version = "0.10.0", optional = true}
+log = { version = "0.4.20", optional = true }
+env_logger = { version = "0.10.1", optional = true }
 
 [dev-dependencies]
 tempfile = "3.4"
-nix = "0.26"
+nix = "0.26.4"
 random-string = "1.0.0"

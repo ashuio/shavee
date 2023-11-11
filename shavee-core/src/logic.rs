@@ -3,8 +3,10 @@ use base64;
 use rand::{self, RngCore};
 use std::error::Error;
 
-pub const BASE64_ENGINE: base64::engine::GeneralPurpose =
-    base64::engine::GeneralPurpose::new(&base64::alphabet::STANDARD, base64::engine::general_purpose::NO_PAD);
+pub const BASE64_ENGINE: base64::engine::GeneralPurpose = base64::engine::GeneralPurpose::new(
+    &base64::alphabet::STANDARD,
+    base64::engine::general_purpose::NO_PAD,
+);
 
 // All ZFS Dataset functions are methods for the Dataset Struct
 impl Dataset {
@@ -73,7 +75,10 @@ impl Dataset {
         self.create(&passphrase)?;
         crate::trace("Dataset was created successfully!");
         // Store the in the ZFS dataset property as base64 encoded
-        self.set_property(crate::ZFS_PROPERTY_SALT.to_owned(), &base64::Engine::encode(&BASE64_ENGINE, salt))?;
+        self.set_property(
+            crate::ZFS_PROPERTY_SALT.to_owned(),
+            &base64::Engine::encode(&BASE64_ENGINE, salt),
+        )?;
         crate::trace(&format!("Salt \"{:?}\" stored successfully!", salt));
         Ok(())
     }
@@ -93,7 +98,10 @@ impl Dataset {
         self.create(&passphrase)?;
         crate::trace("Dataset was created successfully!");
         // Store the in the ZFS dataset property as base64 encoded
-        self.set_property(crate::ZFS_PROPERTY_SALT.to_owned(), &base64::Engine::encode(&BASE64_ENGINE, salt))?;
+        self.set_property(
+            crate::ZFS_PROPERTY_SALT.to_owned(),
+            &base64::Engine::encode(&BASE64_ENGINE, salt),
+        )?;
         crate::trace(&format!("Salt \"{:?}\" stored successfully!", salt));
         Ok(())
     }
