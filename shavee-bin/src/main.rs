@@ -1,6 +1,9 @@
 mod args;
 
+use std::io::stdin;
+
 use args::*;
+use atty::Stream;
 
 /// main() collect the arguments from command line, pass them to run() and print any
 /// messages upon exiting the program
@@ -61,10 +64,22 @@ fn run(args: CliArgs) -> Result<Option<String>, Box<dyn std::error::Error>> {
             // map error to String
         });
     }
+
+    let mut password = String::new();
+
+    // Check if input is piped and read accordingly
+
+    if atty::is(Stream::Stdin) {
+        password = rpassword::prompt_password("Dataset Password: ").map_err(|e| e.to_string())?;
+    } else {
+        stdin().read_line(&mut password)?;
+    };
+
+    let password = password.trim().as_bytes();
+
     // prompt user for password, in case of an error, terminate this function and
     // return the error to main()
-    let binding = rpassword::prompt_password_stderr("Dataset Password: ").map_err(|e| e.to_string())?;
-    let password = binding.as_bytes();
+
     shavee_core::trace("Password has entered successfully.");
 
     // if in the file 2FA mode, then wait for hash generation thread to finish
@@ -81,13 +96,13 @@ fn run(args: CliArgs) -> Result<Option<String>, Box<dyn std::error::Error>> {
     let exit_result: Option<String> = match args.operation {
         OperationMode::Create { dataset } => {
             // Ask and check for password a second time
-            let binding2 =
-                rpassword::prompt_password_stderr("Retype  Password: ").map_err(|e| e.to_string())?;
+            let binding =
+                rpassword::prompt_password("Retype  Password: ").map_err(|e| e.to_string())?;
 
-            if binding != binding2 {
-                return Err("Passwords do not match.".into())
+            if password != binding.as_bytes() {
+                return Err("Passwords do not match.".into());
             }
-            drop(binding2);
+            drop(binding);
 
             shavee_core::trace(&format!(
                 "\tCreate ZFS dataset: \"{}\" using \"{:?}\" method.",
