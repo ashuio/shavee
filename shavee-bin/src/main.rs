@@ -80,6 +80,15 @@ fn run(args: CliArgs) -> Result<Option<String>, Box<dyn std::error::Error>> {
     // Use this variable as the function return to be used for printing to stdio if needed.
     let exit_result: Option<String> = match args.operation {
         OperationMode::Create { dataset } => {
+            // Ask and check for password a second time
+            let binding2 =
+                rpassword::prompt_password("Retype  Password: ").map_err(|e| e.to_string())?;
+
+            if binding != binding2 {
+                return Err("Passwords do not match.".into())
+            }
+            drop(binding2);
+
             shavee_core::trace(&format!(
                 "\tCreate ZFS dataset: \"{}\" using \"{:?}\" method.",
                 dataset.to_string(),
