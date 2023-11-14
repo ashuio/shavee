@@ -2,9 +2,7 @@
 
 <!-- ![rust workflow](https://github.com/ashuio/shavee/actions/workflows/rust.yml/badge.svg) -->
 [![GitHub license](https://img.shields.io/badge/license-MIT-blue)](https://github.com/ashuio/shavee/blob/master/LICENSE)
-[![GPG](https://img.shields.io/keybase/pgp/ashutoshverma)](https://ashu.io/gpg/)
-![Crates.io](https://img.shields.io/crates/v/shavee)
-    
+
 shavee is a simple program and a pam module to automatically decrypt and mount encrypted ZFS user home directories using Yubikey HMAC or a Simple USB drive as 2FA written in rust.
 
 ## Supported methods
@@ -98,10 +96,12 @@ Flags/Options
 
 * `-y` : Use Yubikey for 2FA
 * `-f` : Use any file as 2FA, takes filepath or a HTTP(S) location as an argument.
+* `-p` : Prints out the secret key.
 * `-P` : Set port for HTTP and SFTP requests (Upper case P )
 * `-s` : Set Yubikey HMAC Slot (Can be either 1 or 2)
 * `-c` : Create/Change key of ZFS dataset with the derived encryption key
-* `-z` : if present in conjunction with any of the above options, it will try to unlock and mount the given dataset with the derived key instead of printing it. Takes zfs dataset path as argument. ( Will automatically append username in PAM mode )
+* `-m` : Unlocks and Mounts the ZFS Dataset.
+* `-z` : ZFS Dataset to operate on. ( Will automatically append username in PAM module )
 
 **NOTE: The `-y` (Yubikey mode) flag and the `-f <path to file>` (File mode) option are interchangeable.**
 
@@ -154,8 +154,20 @@ Simply use the option `-z` to unlock any zfs dataset
 **Example**
 
 ```bash
-shavee -y -z zroot/data/home/hunter/secrets
+shavee -y -m -z zroot/data/home/hunter/secrets
 ```
+
+## Backup Keys
+
+To backup the key simply use the `-p` option to print the secret key to stdout
+
+**Example**
+
+```bash
+shavee -p -y -z zroot/data/home/hunter/secrets
+```
+**NOTE: Secret Keys are unique to your dataset even if you use the same password for multiple datasets.** 
+
 ## Use in Scripts
 
 **You can also pipe the password directly into shavee to use with scripts**
@@ -163,7 +175,7 @@ shavee -y -z zroot/data/home/hunter/secrets
 **Example**
 
 ```bash
-echo "hunter2" | shavee -y -z zroot/data/home/hunter/secrets
+echo "hunter2" | shavee -y -m -z zroot/data/home/hunter/secrets
 ```
 
 Here "hunter2" will be treated as the password

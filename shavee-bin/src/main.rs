@@ -63,7 +63,7 @@ fn run(args: CliArgs) -> Result<Option<String>, Box<dyn std::error::Error>> {
     }
     // prompt user for password, in case of an error, terminate this function and
     // return the error to main()
-    let binding = rpassword::prompt_password("Dataset Password: ").map_err(|e| e.to_string())?;
+    let binding = rpassword::prompt_password_stderr("Dataset Password: ").map_err(|e| e.to_string())?;
     let password = binding.as_bytes();
     shavee_core::trace("Password has entered successfully.");
 
@@ -82,7 +82,7 @@ fn run(args: CliArgs) -> Result<Option<String>, Box<dyn std::error::Error>> {
         OperationMode::Create { dataset } => {
             // Ask and check for password a second time
             let binding2 =
-                rpassword::prompt_password("Retype  Password: ").map_err(|e| e.to_string())?;
+                rpassword::prompt_password_stderr("Retype  Password: ").map_err(|e| e.to_string())?;
 
             if binding != binding2 {
                 return Err("Passwords do not match.".into())
