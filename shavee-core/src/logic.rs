@@ -75,10 +75,6 @@ impl Dataset {
         self.create(&passphrase)?;
         crate::trace("Dataset was created successfully!");
         // Store the in the ZFS dataset property as base64 encoded
-        self.set_property(
-            crate::ZFS_PROPERTY_SALT.to_owned(),
-            &base64::Engine::encode(&BASE64_ENGINE, salt),
-        )?;
         crate::trace(&format!("Salt \"{:?}\" stored successfully!", salt));
         Ok(())
     }
@@ -98,14 +94,11 @@ impl Dataset {
         self.create(&passphrase)?;
         crate::trace("Dataset was created successfully!");
         // Store the in the ZFS dataset property as base64 encoded
-        self.set_property(
-            crate::ZFS_PROPERTY_SALT.to_owned(),
-            &base64::Engine::encode(&BASE64_ENGINE, salt),
-        )?;
         crate::trace(&format!("Salt \"{:?}\" stored successfully!", salt));
         Ok(())
     }
 }
+
 
 /// Generates ZFS dataset passphrase based on yubikey 2FA
 pub fn yubi_key_calculation(
@@ -174,7 +167,7 @@ pub fn get_salt(dataset: Option<&Dataset>) -> Result<Vec<u8>, Box<dyn Error>> {
                 "Check if the ZFS \"{:?}\" dataset has a salt property",
                 dataset
             ));
-            match dataset.get_property(crate::ZFS_PROPERTY_SALT.to_owned())? {
+            match dataset.get_property(crate::zfs::ZFS_PROPERTY_SALT.to_owned())? {
                 Some(property_value) => {
                     crate::trace(&format!(
                         "Dataset has salt! Base64 encoded: \"{}\".",

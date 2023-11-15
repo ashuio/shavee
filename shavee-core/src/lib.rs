@@ -3,6 +3,7 @@ pub mod logic;
 pub mod password;
 pub mod yubikey;
 pub mod zfs;
+pub mod binargs;
 
 pub const UNREACHABLE_CODE: &str =
     "Panic! Something unexpected happened! Please help by reporting it as a bug.";
@@ -10,8 +11,7 @@ pub const UNREACHABLE_CODE: &str =
 /// Static salt for backward compatibility
 pub const STATIC_SALT: &str = "This Project is Dedicated to Aveesha.";
 
-/// ZFS property used to store the random salt
-pub const ZFS_PROPERTY_SALT: &str = "com.github.shavee:salt";
+
 
 /// Name of Shell Environment variable for storing salt
 pub const ENV_SALT_VARIABLE: &str = "SHAVEE_SALT";

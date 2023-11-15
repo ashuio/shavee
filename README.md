@@ -101,6 +101,7 @@ Flags/Options
 * `-s` : Set Yubikey HMAC Slot (Can be either 1 or 2)
 * `-c` : Create/Change key of ZFS dataset with the derived encryption key
 * `-m` : Unlocks and Mounts the ZFS Dataset.
+* `-a` : Automatically Detect Dataset Unlock Properties ( can only be used with `Print` and `Mount` )
 * `-z` : ZFS Dataset to operate on. ( Will automatically append username in PAM module )
 
 **NOTE: The `-y` (Yubikey mode) flag and the `-f <path to file>` (File mode) option are interchangeable.**
@@ -220,12 +221,12 @@ In our example we will be adding it to **/etc/pam.d/sddm** to handle graphical l
 
 **Add the following line to you pam config file**
 ```
-auth    optional    libshavee_pam.so -y -z <base home dir>
+auth    optional    libshavee_pam.so <Base home Dataset>
 ```
 
 **Example**
 ```
-auth    optional    libshavee_pam.so -y -z zroot/data/home
+auth    optional    libshavee_pam.so zroot/data/home
 ``` 
 Where `zroot/data/home` mounts to `/home`
 

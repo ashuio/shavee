@@ -1,9 +1,6 @@
-mod args;
-
-use std::io::stdin;
-
-use args::*;
 use atty::Stream;
+use shavee_core::binargs::*;
+use std::io::stdin;
 
 /// main() collect the arguments from command line, pass them to run() and print any
 /// messages upon exiting the program
@@ -94,6 +91,41 @@ fn run(args: CliArgs) -> Result<Option<String>, Box<dyn std::error::Error>> {
     shavee_core::trace("Operation Mode:");
     // Use this variable as the function return to be used for printing to stdio if needed.
     let exit_result: Option<String> = match args.operation {
+        OperationMode::Auto {
+            dataset,
+            autooperation,
+        } => {
+            if autooperation.as_str() == "Print" {
+                let salt = shavee_core::logic::get_salt(Some(&dataset))?;
+                let passphrase = match args.second_factor {
+                    #[cfg(feature = "yubikey")]
+                    TwoFactorMode::Yubikey { yslot } => {
+                        shavee_core::logic::yubi_key_calculation(password, yslot, &salt)?
+                    }
+                    #[cfg(feature = "file")]
+                    TwoFactorMode::File { .. } => {
+                        shavee_core::logic::file_key_calculation(&password, filehash, &salt)?
+                    }
+                    TwoFactorMode::Password => {
+                        shavee_core::logic::password_mode_hash(&password, &salt)?
+                    }
+                };
+                Some(passphrase)
+            } else {
+                let salt = shavee_core::logic::get_salt(Some(&dataset))?;
+                match args.second_factor {
+                    #[cfg(feature = "yubikey")]
+                    TwoFactorMode::Yubikey { yslot } => {
+                        dataset.yubi_unlock(password, yslot, &salt)?
+                    }
+                    #[cfg(feature = "file")]
+                    TwoFactorMode::File { .. } => dataset.file_unlock(password, filehash, &salt)?,
+                    TwoFactorMode::Password => dataset
+                        .pass_unlock(shavee_core::logic::password_mode_hash(&password, &salt)?)?,
+                }
+                None
+            }
+        }
         OperationMode::Create { dataset } => {
             // Ask and check for password a second time
             let binding =
@@ -112,20 +144,25 @@ fn run(args: CliArgs) -> Result<Option<String>, Box<dyn std::error::Error>> {
             let salt = shavee_core::logic::generate_salt();
             match args.second_factor {
                 #[cfg(feature = "yubikey")]
-                TwoFactorMode::Yubikey { yslot } => dataset.yubi_create(password, yslot, &salt)?,
+                TwoFactorMode::Yubikey { yslot } => {
+                    dataset.clone().yubi_create(password, yslot, &salt)?;
+                }
                 #[cfg(feature = "file")]
-                TwoFactorMode::File { .. } => dataset.file_create(password, filehash, &salt)?,
+                TwoFactorMode::File { .. } => {
+                    dataset.clone().file_create(password, filehash, &salt)?
+                }
                 TwoFactorMode::Password => {
                     let password_mode_hash =
                         shavee_core::logic::password_mode_hash(&password, &salt)?;
-                    dataset.create(&password_mode_hash)?;
+                    dataset.clone().create(&password_mode_hash)?;
                     // store generated random salt as base64 encoded in ZFS property
-                    dataset.set_property(
-                        shavee_core::ZFS_PROPERTY_SALT.to_owned(),
-                        &base64::Engine::encode(&shavee_core::logic::BASE64_ENGINE, salt),
-                    )?;
                 }
             }
+            dataset.set_property_operation(
+                args.second_factor,
+                &base64::Engine::encode(&shavee_core::logic::BASE64_ENGINE, salt),
+            )?;
+
             None
         }
         OperationMode::Mount { dataset } => {
@@ -233,8 +270,6 @@ mod tests {
 
             // release stdin back to normal
             drop(stdin_guard);
-            //clean up the temp files
-            drop(password_file_path);
 
             // **Integration test** check for graceful execution
             let output = output.unwrap().unwrap();
@@ -283,8 +318,6 @@ mod tests {
 
             // release stdin back to normal
             drop(stdin_guard);
-            //clean up the temp files
-            drop(password_file_path);
 
             // **Integration test** check for graceful execution
             let output = output.unwrap().unwrap();
@@ -364,8 +397,6 @@ mod tests {
 
                 // release stdin back to normal
                 drop(stdin_guard);
-                //clean up the temp files
-                drop(password_file_path);
 
                 //umount and unload the ZFS key
                 zfs_encrypted_dataset
@@ -433,8 +464,6 @@ mod tests {
 
                 // release stdin back to normal
                 drop(stdin_guard);
-                //clean up the temp files
-                drop(password_file_path);
             } // END of **Integration Test**: mount an encrypted dataset from password
 
             //clean up and remove the dataset folder
@@ -523,8 +552,6 @@ mod tests {
 
                 // release stdin back to normal
                 drop(stdin_guard);
-                //clean up the temp files
-                drop(password_file_path);
 
                 //umount and unload the ZFS key
                 zfs_encrypted_dataset
@@ -571,8 +598,6 @@ mod tests {
 
                 // release stdin back to normal
                 drop(stdin_guard);
-                //clean up the temp files
-                drop(password_file_path);
 
                 //umount and unload the ZFS key
                 zfs_encrypted_dataset

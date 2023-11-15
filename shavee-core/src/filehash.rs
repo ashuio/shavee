@@ -287,7 +287,7 @@ mod tests {
 
         for index in 0..file_hash_result_pairs.len() {
             let mut file = temp_folder.clone();
-            file.push(file_hash_result_pairs[index].file.clone());
+            file.push(file_hash_result_pairs[index].file);
             let size = file_hash_result_pairs[index].size.clone();
 
             match get_filehash_local(file.as_os_str().to_str().unwrap(), size).map_err(|e| e.kind())
@@ -421,7 +421,7 @@ mod tests {
         ];
 
         for index in 0..file_hash_result_pairs.len() {
-            let file = file_hash_result_pairs[index].file.clone();
+            let file = file_hash_result_pairs[index].file;
             let port = file_hash_result_pairs[index].port;
             let size = file_hash_result_pairs[index].size;
 

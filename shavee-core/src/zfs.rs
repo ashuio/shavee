@@ -1,5 +1,16 @@
 use std::io::prelude::*;
 use std::process::Command;
+use std::u64;
+
+use crate::binargs::TwoFactorMode;
+
+/// ZFS property used to store the random salt
+pub const ZFS_PROPERTY_SALT: &str = "com.github.shavee:salt";
+pub const ZFS_PROPERTY_YUBI_SLOT: &str = "com.github.shavee:yubislot";
+pub const ZFS_PROPERTY_FILE_PATH: &str = "com.github.shavee:filepath";
+pub const ZFS_PROPERTY_FILE_PORT: &str = "com.github.shavee:fileport";
+pub const ZFS_PROPERTY_FILE_SIZE: &str = "com.github.shavee:filesize";
+pub const ZFS_PROPERTY_SECOND_FACTOR: &str = "com.github.shavee:secondfactor";
 
 #[derive(Debug, PartialEq, Clone)]
 /// Struct to store dataset
@@ -37,6 +48,111 @@ impl Dataset {
         }
         crate::trace("Name is valid!");
         Ok(Self { dataset })
+    }
+
+    pub fn set_property_operation(
+        &self,
+        args: crate::binargs::TwoFactorMode,
+        salt: &str,
+    ) -> Result<(), std::io::Error> {
+        self.set_property(ZFS_PROPERTY_SALT.to_owned(), salt)?;
+
+        match args {
+            crate::binargs::TwoFactorMode::Yubikey { yslot } => {
+                self.set_property(ZFS_PROPERTY_SECOND_FACTOR.to_owned(), "Yubikey")?;
+                self.set_property(
+                    ZFS_PROPERTY_YUBI_SLOT.to_owned(),
+                    yslot.to_string().as_str(),
+                )?;
+            }
+            crate::binargs::TwoFactorMode::Password => {
+                self.set_property(ZFS_PROPERTY_SECOND_FACTOR.to_owned(), "Password")?;
+            }
+            crate::binargs::TwoFactorMode::File { file, port, size } => {
+                self.set_property(ZFS_PROPERTY_SECOND_FACTOR.to_owned(), "File")?;
+                self.set_property(ZFS_PROPERTY_FILE_PATH.to_owned(), file.as_str())?;
+
+                match port {
+                    Some(p) => self
+                        .set_property(ZFS_PROPERTY_FILE_PORT.to_owned(), p.to_string().as_str())?,
+                    None => {}
+                }
+
+                match size {
+                    Some(s) => self
+                        .set_property(ZFS_PROPERTY_FILE_SIZE.to_owned(), s.to_string().as_str())?,
+                    None => {}
+                }
+            }
+        }
+
+        Ok(())
+    }
+
+    pub fn get_property_operation(&self) -> Result<TwoFactorMode, std::io::Error> {
+        let secondfactor = match self.get_property(ZFS_PROPERTY_SECOND_FACTOR.to_string())? {
+            Some(s) => s,
+            None => {
+                return Err(std::io::Error::new(
+                    std::io::ErrorKind::NotFound,
+                    "ZFS Property missing.".to_string(),
+                ))
+            }
+        };
+
+        if secondfactor.as_str() == "Yubikey" {
+            let slot = match self.get_property(ZFS_PROPERTY_YUBI_SLOT.to_string())? {
+                Some(s) => s,
+                None => 2.to_string(),
+            };
+            let result = TwoFactorMode::Yubikey {
+                yslot: slot.as_bytes()[0],
+            };
+            return Ok(result);
+        } else if secondfactor.as_str() == "File" {
+            let file = match self.get_property(ZFS_PROPERTY_FILE_PATH.to_string())? {
+                Some(s) => s,
+                None => {
+                    return Err(std::io::Error::new(
+                        std::io::ErrorKind::NotFound,
+                        "ZFS Property missing.".to_string(),
+                    ))
+                }
+            };
+
+            let port: Option<u16> = match self.get_property(ZFS_PROPERTY_FILE_PORT.to_string())? {
+                Some(s) => {
+                    let number = ((s.as_bytes()[0] as u16) << 8) | s.as_bytes()[1] as u16;
+                    Some(number)
+                }
+                None => None,
+            };
+
+            let size: Option<u64> = match self.get_property(ZFS_PROPERTY_FILE_SIZE.to_string())? {
+                Some(s) => {
+                    let number: Option<u64> = match s.parse::<u64>() {
+                        Ok(n) => Some(n),
+                        Err(_) => None,
+                    };
+                    number
+                }
+                None => None,
+            };
+
+            let result = TwoFactorMode::File {
+                file: file,
+                port: port,
+                size: size,
+            };
+            return Ok(result);
+        } else if secondfactor.as_str() == "Password" {
+            return Ok(TwoFactorMode::Password);
+        } else {
+            return Err(std::io::Error::new(
+                std::io::ErrorKind::NotFound,
+                "Unknown Property Value".to_string(),
+            ));
+        }
     }
 
     // Convert the Dataset name to String

@@ -1,6 +1,6 @@
 //TODO (Issue #16): Implement clap_config() once it is ported to clap 3.0
+use crate::zfs::Dataset;
 use clap::{crate_authors, crate_description, crate_name, crate_version, App, Arg};
-use shavee_core::zfs::Dataset;
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum TwoFactorMode {
@@ -19,11 +19,22 @@ pub enum TwoFactorMode {
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum OperationMode {
-    Create { dataset: Dataset },
-    Mount { dataset: Dataset },
-    PrintDataset { dataset: Dataset },
+    Create {
+        dataset: Dataset,
+    },
+    Mount {
+        dataset: Dataset,
+    },
+    PrintDataset {
+        dataset: Dataset,
+    },
+    Auto {
+        dataset: Dataset,
+        autooperation: String,
+    },
     Print,
 }
+
 #[derive(Debug, Clone, PartialEq)]
 pub struct CliArgs {
     pub operation: OperationMode,
@@ -113,6 +124,17 @@ impl CliArgs {
                     .requires("zset")
             )
             .arg(
+                Arg::new("auto")
+                    .short('a')
+                    .long("auto")
+                    .help("Try to automatically guess the unlock config for a dataset")
+                    .takes_value(false)
+                    .required(false)
+                    .requires("zset")
+                    .requires("mount || Print" )
+                    .conflicts_with("create")
+            )
+            .arg(
                 Arg::new("keyfile")
                     .short('f')
                     .long("file")
@@ -135,7 +157,7 @@ impl CliArgs {
                     .hide(!cfg!(feature = "file"))  // hide it in help if feature is disabled
                     .required(false)
                     .requires("keyfile")    // port must be accompanied by keyfile option
-                    .validator(shavee_core::port_check)  // validate that port parameter is "valid"
+                    .validator(crate::port_check)  // validate that port parameter is "valid"
                     .help("Set port for HTTP(S) and SFTP requests"),
             );
 
@@ -150,7 +172,7 @@ impl CliArgs {
             Some(values) => {
                 // convert the values to a vector
                 let file_size_argument: Vec<&str> = values.collect();
-                shavee_core::parse_file_size_arguments(file_size_argument)?
+                crate::parse_file_size_arguments(file_size_argument)?
             }
             None => (None, None),
         };
@@ -171,29 +193,53 @@ impl CliArgs {
         #[cfg(feature = "file")]
         let port = arg
             .value_of("port")
-            .map(|p| p.parse::<u16>().expect(shavee_core::UNREACHABLE_CODE));
+            .map(|p| p.parse::<u16>().expect(crate::UNREACHABLE_CODE));
 
         // The accepted slot arguments are Some (1 or 2) or None (not entered by user)
         // Default value if not entered is 2
         #[cfg(feature = "yubikey")]
         let yslot = match arg.value_of("slot") {
             // exceptions should not happen, because the entry is already validated by clap
-            Some(s) => s.parse::<u8>().expect(shavee_core::UNREACHABLE_CODE),
+            Some(s) => s.parse::<u8>().expect(crate::UNREACHABLE_CODE),
             None => 2,
         };
 
-        let operation = if arg.is_present("create") {
-            let dataset = Dataset::new(dataset.expect(shavee_core::UNREACHABLE_CODE))?;
+        let mut operation = if arg.is_present("create") {
+            let dataset = Dataset::new(dataset.expect(crate::UNREACHABLE_CODE))?;
             OperationMode::Create { dataset }
         } else if arg.is_present("mount") {
-            let dataset = Dataset::new(dataset.expect(shavee_core::UNREACHABLE_CODE))?;
+            let dataset = Dataset::new(dataset.expect(crate::UNREACHABLE_CODE))?;
             OperationMode::Mount { dataset }
         } else if arg.is_present("print") {
-            let dataset = Dataset::new(dataset.expect(shavee_core::UNREACHABLE_CODE))?;
+            let dataset = Dataset::new(dataset.expect(crate::UNREACHABLE_CODE))?;
             OperationMode::PrintDataset { dataset }
         } else {
             OperationMode::Print
         };
+
+        if arg.is_present("auto") {
+            let autooperation = match operation {
+                OperationMode::Mount { dataset } => OperationMode::Auto {
+                    dataset: dataset,
+                    autooperation: "Mount".to_string(),
+                },
+                OperationMode::PrintDataset { dataset } => OperationMode::Auto {
+                    dataset: dataset,
+                    autooperation: "Print".to_string(),
+                },
+                OperationMode::Create { dataset } => OperationMode::Create { dataset: dataset },
+                OperationMode::Auto {
+                    dataset,
+                    autooperation,
+                } => OperationMode::Auto {
+                    dataset: dataset,
+                    autooperation: autooperation,
+                },
+                OperationMode::Print => OperationMode::Print,
+            };
+
+            operation = autooperation;
+        }
 
         // The default mode is Password.
         #[allow(unused_mut)]
@@ -223,7 +269,7 @@ impl CliArgs {
             }
             #[cfg(feature = "file")]
             {
-                let file = file.expect(shavee_core::UNREACHABLE_CODE);
+                let file = file.expect(crate::UNREACHABLE_CODE);
                 second_factor = TwoFactorMode::File { file, port, size };
             }
         };
