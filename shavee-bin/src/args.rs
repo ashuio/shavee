@@ -86,6 +86,7 @@ impl CliArgs {
                     .long("slot")
                     .help("Yubikey HMAC Slot")
                     .value_name("HMAC slot")
+                    .default_value("2")
                     .value_parser(PossibleValuesParser::new(possible_values_slot))
                     .hide(!cfg!(feature = "yubikey")) // hide it in help if feature is disabled
                     .required(false)
@@ -133,7 +134,7 @@ impl CliArgs {
                     .hide(!cfg!(feature = "file")) // hide it in help if feature is disabled
                     .required(false)
                     .value_name("FILE|ADDRESS [SIZE]")
-                    .num_args(2)
+                    .num_args(1..=2)
                     .conflicts_with("yubikey"), // keyfile xor yubikey, not both.
             )
             .arg(
@@ -184,7 +185,13 @@ impl CliArgs {
         #[cfg(feature = "file")]
         let port: Option<&u16> = arg.get_one("port");
         let port = match port {
-            Some(p) => Some(p.to_owned()),
+            Some(p) => {
+                let mut p = Some(p.to_owned());
+                if p == Some(0) {
+                    p = None
+                }
+                p
+            }
             None => None,
         };
 
@@ -192,11 +199,11 @@ impl CliArgs {
         // Default value if not entered is 2
         #[cfg(feature = "yubikey")]
         let yslot: Option<&String> = arg.get_one("slot");
-        let yslot: String = match yslot {
+        let yslot = match yslot {
             Some(s) => s.to_owned(),
-            None => "2".to_string(),
+            None => 2.to_string(),
         };
-        let yslot = yslot.as_str().as_bytes()[0];
+        let yslot: u8 = yslot.parse::<u8>().expect("Invalid Port!");
 
         let operation = if cmdpresent(&arg, "create") {
             let dataset = Dataset::new(dataset.expect(shavee_core::UNREACHABLE_CODE))?;
@@ -273,234 +280,261 @@ fn cmdpresent(args: &ArgMatches, cmd: &str) -> bool {
 }
 // This section implements unit tests for the functions in this module.
 // Any code change in this module must pass unit tests below.
-// #[cfg(test)]
-// mod tests {
-//     use super::*;
-//     #[test]
-//     fn input_args_check() {
-//         // defining a struct that will hold input arguments
-//         // and their output result
-//         struct ArgResultPair<'a> {
-//             arg: Vec<&'a str>,
-//             result: CliArgs,
-//         }
 
-//         // each entry of the array holds the input/output struct
-//         let valid_arguments_results_pairs = [
-//             ArgResultPair {
-//                 arg: vec![], // no argument
-//                 result: CliArgs {
-//                     operation: Operations::Print,
-//                     second_factor: TwoFactorMode::Password,
-//                 },
-//             },
-//             ArgResultPair {
-//                 arg: vec!["-z", "zroot/test"], // -z zroot/test
-//                 result: CliArgs {
-//                     operation: Operations::Mount {
-//                         dataset: Dataset::new("zroot/test".to_string()).unwrap(),
-//                     },
-//                     second_factor: TwoFactorMode::Password,
-//                 },
-//             },
-//             ArgResultPair {
-//                 arg: vec!["-c", "-z", "zroot/test"], // -c -z zroot/test
-//                 result: CliArgs {
-//                     operation: Operations::Create {
-//                         dataset: Dataset::new("zroot/test".to_string()).unwrap(),
-//                     },
-//                     second_factor: TwoFactorMode::Password,
-//                 },
-//             },
-//             ArgResultPair {
-//                 arg: vec!["--create", "--zset", "zroot/test/"], // --create --zset zroot/test/
-//                 result: CliArgs {
-//                     operation: Operations::Create {
-//                         dataset: Dataset::new("zroot/test".to_string()).unwrap(),
-//                     },
-//                     second_factor: TwoFactorMode::Password,
-//                 },
-//             },
-//             #[cfg(feature = "yubikey")]
-//             ArgResultPair {
-//                 arg: vec!["-y", "-s", "1", "-c", "-z", "zroot/test/"], // -y -s 1 -c -z zroot/test/
-//                 result: CliArgs {
-//                     operation: Operations::Create {
-//                         dataset: Dataset::new("zroot/test".to_string()).unwrap(),
-//                     },
-//                     second_factor: TwoFactorMode::Yubikey { yslot: 1 },
-//                 },
-//             },
-//             #[cfg(feature = "yubikey")]
-//             ArgResultPair {
-//                 arg: vec!["-y"], // -y
-//                 result: CliArgs {
-//                     operation: Operations::Print,
-//                     second_factor: TwoFactorMode::Yubikey { yslot: 2 },
-//                 },
-//             },
-//             #[cfg(feature = "yubikey")]
-//             ArgResultPair {
-//                 arg: vec!["-y", "-s", "1"], // -y -s 1
-//                 result: CliArgs {
-//                     operation: Operations::Print,
-//                     second_factor: TwoFactorMode::Yubikey { yslot: 1 },
-//                 },
-//             },
-//             #[cfg(feature = "yubikey")]
-//             ArgResultPair {
-//                 arg: vec!["--yubi", "--slot", "2"], // --yubi --slot 2
-//                 result: CliArgs {
-//                     operation: Operations::Print,
-//                     second_factor: TwoFactorMode::Yubikey { yslot: 2 },
-//                 },
-//             },
-//             #[cfg(feature = "file")]
-//             ArgResultPair {
-//                 // test entry for size argument
-//                 arg: vec!["--file", "./shavee", "2048"], // --file ./shavee 2048
-//                 result: CliArgs {
-//                     operation: Operations::Print,
-//                     second_factor: TwoFactorMode::File {
-//                         file: String::from("./shavee"),
-//                         port: None,
-//                         size: Some(2048),
-//                     },
-//                 },
-//             },
-//             #[cfg(feature = "file")]
-//             ArgResultPair {
-//                 // test entry for size argument
-//                 arg: vec!["--port", "80", "-f", "./shavee", "4096"], // --port 80 --file ./shavee 4096
-//                 result: CliArgs {
-//                     operation: Operations::Print,
-//                     second_factor: TwoFactorMode::File {
-//                         file: String::from("./shavee"),
-//                         port: Some(80),
-//                         size: Some(4096),
-//                     },
-//                 },
-//             },
-//             #[cfg(feature = "file")]
-//             ArgResultPair {
-//                 arg: vec!["--file", "./shavee"], // --file ./shavee
-//                 result: CliArgs {
-//                     operation: Operations::Print,
-//                     second_factor: TwoFactorMode::File {
-//                         file: String::from("./shavee"),
-//                         port: None,
-//                         size: None,
-//                     },
-//                 },
-//             },
-//             #[cfg(feature = "file")]
-//             ArgResultPair {
-//                 arg: vec!["--port", "80", "-f", "./shavee"], // --port 80 --file ./shavee
-//                 result: CliArgs {
-//                     operation: Operations::Print,
-//                     second_factor: TwoFactorMode::File {
-//                         file: String::from("./shavee"),
-//                         port: Some(80),
-//                         size: None,
-//                     },
-//                 },
-//             },
-//             #[cfg(feature = "file")]
-//             ArgResultPair {
-//                 arg: vec!["-P", "443", "-f", "./shavee"], // -P 443 --file ./shavee
-//                 result: CliArgs {
-//                     operation: Operations::Print,
-//                     second_factor: TwoFactorMode::File {
-//                         file: String::from("./shavee"),
-//                         port: Some(443),
-//                         size: None,
-//                     },
-//                 },
-//             },
-//             #[cfg(feature = "file")]
-//             ArgResultPair {
-//                 arg: vec!["-f", "./shavee", "-z", "zroot/test"], // -f ./shavee -z zroot/test
-//                 result: CliArgs {
-//                     operation: Operations::Mount {
-//                         dataset: Dataset::new("zroot/test".to_string()).unwrap(),
-//                     },
-//                     second_factor: TwoFactorMode::File {
-//                         file: String::from("./shavee"),
-//                         port: None,
-//                         size: None,
-//                     },
-//                 },
-//             },
-//         ];
+#[cfg(test)]
+mod tests {
+    use super::*;
+    #[test]
+    fn input_args_check() {
+        // defining a struct that will hold input arguments
+        // and their output result
+        struct ArgResultPair<'a> {
+            arg: Vec<&'a str>,
+            result: CliArgs,
+        }
 
-//         for index in 0..valid_arguments_results_pairs.len() {
-//             let mut args = Vec::new();
-//             //note: the first argument is always the executable name: crate_name!()
-//             args.push(crate_name!());
-//             args.extend(valid_arguments_results_pairs[index].arg.clone());
-//             assert_eq!(
-//                 CliArgs::new_from(args.iter()).unwrap(),
-//                 valid_arguments_results_pairs[index].result
-//             );
-//         }
+        // each entry of the array holds the input/output struct
+        let valid_arguments_results_pairs = [
+            ArgResultPair {
+                arg: vec![], // no argument
+                result: CliArgs {
+                    operation: OperationMode::Manual {
+                        operation: Operations::Print,
+                    },
+                    second_factor: TwoFactorMode::Password,
+                },
+            },
+            ArgResultPair {
+                arg: vec!["-m", "-z", "zroot/test"], // -z zroot/test
+                result: CliArgs {
+                    operation: OperationMode::Manual {
+                        operation: Operations::Mount {
+                            dataset: Dataset::new("zroot/test".to_string()).unwrap(),
+                        },
+                    },
+                    second_factor: TwoFactorMode::Password,
+                },
+            },
+            ArgResultPair {
+                arg: vec!["-c", "-z", "zroot/test"], // -c -z zroot/test
+                result: CliArgs {
+                    operation: OperationMode::Manual {
+                        operation: Operations::Create {
+                            dataset: Dataset::new("zroot/test".to_string()).unwrap(),
+                        },
+                    },
+                    second_factor: TwoFactorMode::Password,
+                },
+            },
+            ArgResultPair {
+                arg: vec!["--create", "--zset", "zroot/test/"], // --create --zset zroot/test/
+                result: CliArgs {
+                    operation: OperationMode::Manual {
+                        operation: Operations::Create {
+                            dataset: Dataset::new("zroot/test".to_string()).unwrap(),
+                        },
+                    },
+                    second_factor: TwoFactorMode::Password,
+                },
+            },
+            #[cfg(feature = "yubikey")]
+            ArgResultPair {
+                arg: vec!["-y", "-s", "1", "-c", "-z", "zroot/test/"], // -y -s 1 -c -z zroot/test/
+                result: CliArgs {
+                    operation: OperationMode::Manual {
+                        operation: Operations::Create {
+                            dataset: Dataset::new("zroot/test".to_string()).unwrap(),
+                        },
+                    },
+                    second_factor: TwoFactorMode::Yubikey { yslot: 1 },
+                },
+            },
+            #[cfg(feature = "yubikey")]
+            ArgResultPair {
+                arg: vec!["-y"], // -y
+                result: CliArgs {
+                    operation: OperationMode::Manual {
+                        operation: Operations::Print,
+                    },
+                    second_factor: TwoFactorMode::Yubikey { yslot: 2 },
+                },
+            },
+            #[cfg(feature = "yubikey")]
+            ArgResultPair {
+                arg: vec!["-y", "-s", "1"], // -y -s 1
+                result: CliArgs {
+                    operation: OperationMode::Manual {
+                        operation: Operations::Print,
+                    },
+                    second_factor: TwoFactorMode::Yubikey { yslot: 1 },
+                },
+            },
+            #[cfg(feature = "yubikey")]
+            ArgResultPair {
+                arg: vec!["--yubi", "--slot", "2"], // --yubi --slot 2
+                result: CliArgs {
+                    operation: OperationMode::Manual {
+                        operation: Operations::Print,
+                    },
+                    second_factor: TwoFactorMode::Yubikey { yslot: 2 },
+                },
+            },
+            #[cfg(feature = "file")]
+            ArgResultPair {
+                // test entry for size argument
+                arg: vec!["--file", "./shavee", "2048"], // --file ./shavee 2048
+                result: CliArgs {
+                    operation: OperationMode::Manual {
+                        operation: Operations::Print,
+                    },
+                    second_factor: TwoFactorMode::File {
+                        file: String::from("./shavee"),
+                        port: None,
+                        size: Some(2048),
+                    },
+                },
+            },
+            #[cfg(feature = "file")]
+            ArgResultPair {
+                // test entry for size argument
+                arg: vec!["--port", "80", "-f", "./shavee", "4096"], // --port 80 --file ./shavee 4096
+                result: CliArgs {
+                    operation: OperationMode::Manual {
+                        operation: Operations::Print,
+                    },
+                    second_factor: TwoFactorMode::File {
+                        file: String::from("./shavee"),
+                        port: Some(80),
+                        size: Some(4096),
+                    },
+                },
+            },
+            #[cfg(feature = "file")]
+            ArgResultPair {
+                arg: vec!["--file", "./shavee"], // --file ./shavee
+                result: CliArgs {
+                    operation: OperationMode::Manual {
+                        operation: Operations::Print,
+                    },
+                    second_factor: TwoFactorMode::File {
+                        file: String::from("./shavee"),
+                        port: None,
+                        size: None,
+                    },
+                },
+            },
+            #[cfg(feature = "file")]
+            ArgResultPair {
+                arg: vec!["--port", "80", "-f", "./shavee"], // --port 80 --file ./shavee
+                result: CliArgs {
+                    operation: OperationMode::Manual {
+                        operation: Operations::Print,
+                    },
+                    second_factor: TwoFactorMode::File {
+                        file: String::from("./shavee"),
+                        port: Some(80),
+                        size: None,
+                    },
+                },
+            },
+            #[cfg(feature = "file")]
+            ArgResultPair {
+                arg: vec!["-P", "443", "-f", "./shavee"], // -P 443 --file ./shavee
+                result: CliArgs {
+                    operation: OperationMode::Manual {
+                        operation: Operations::Print,
+                    },
+                    second_factor: TwoFactorMode::File {
+                        file: String::from("./shavee"),
+                        port: Some(443),
+                        size: None,
+                    },
+                },
+            },
+            #[cfg(feature = "file")]
+            ArgResultPair {
+                arg: vec!["-m", "-f", "./shavee", "-z", "zroot/test"], // -f ./shavee -z zroot/test
+                result: CliArgs {
+                    operation: OperationMode::Manual {
+                        operation: Operations::Mount {
+                            dataset: Dataset::new("zroot/test".to_string()).unwrap(),
+                        },
+                    },
+                    second_factor: TwoFactorMode::File {
+                        file: String::from("./shavee"),
+                        port: None,
+                        size: None,
+                    },
+                },
+            },
+        ];
 
-//         // For the invalid arguments, there is no output struct and we only check for error
+        for index in 0..valid_arguments_results_pairs.len() {
+            let mut args = Vec::new();
+            //note: the first argument is always the executable name: crate_name!()
+            args.push(crate_name!());
+            args.extend(valid_arguments_results_pairs[index].arg.clone());
+            assert_eq!(
+                CliArgs::new_from(args.iter()).unwrap(),
+                valid_arguments_results_pairs[index].result
+            );
+        }
 
-//         let invalid_arguments = [
-//             vec!["--zset"],   // --zset
-//             vec!["-P"],       // -P
-//             vec!["-c"],       // -c
-//             vec!["--create"], // --create
-//             #[cfg(feature = "yubikey")]
-//             vec!["-s"], // -s
-//             #[cfg(feature = "yubikey")]
-//             vec!["--slot"], // --slot
-//             #[cfg(feature = "yubikey")]
-//             vec!["--slot", "2"], // --slot 2
-//             #[cfg(feature = "yubikey")]
-//             vec!["-y", "-s", "3"], // -y -s 3
-//             #[cfg(feature = "file")]
-//             vec!["--file"], // --file
-//             #[cfg(feature = "file")]
-//             vec!["-f"], // -f
-//             #[cfg(feature = "file")]
-//             vec!["--port", "80"], // --port 80
-//             #[cfg(feature = "file")]
-//             vec!["-z"], // -z
-//             #[cfg(feature = "file")]
-//             vec!["-P", "0", "-f", "./shavee"], // -P 0 -f ./shavee
-//             #[cfg(any(feature = "file", feature = "yubikey"))]
-//             vec!["-y", "-f", "./shavee"], // -y -f ./shavee
-//             // The following tests that error is returned when yubikey 2fa is disabled at compile
-//             #[cfg(not(feature = "yubikey"))]
-//             vec!["-y", "-s", "1", "-c", "-z", "zroot/test/"], // -y -s 1 -c -z zroot/test/
-//             #[cfg(not(feature = "yubikey"))]
-//             vec!["-y"], // -y
-//             #[cfg(not(feature = "yubikey"))]
-//             vec!["-y", "-s", "1"], // -y -s 1
-//             #[cfg(not(feature = "yubikey"))]
-//             vec!["--yubi", "--slot", "2"], // --yubi --slot 2
-//             // The following tests that error is returned when file 2fa is disabled at compile
-//             #[cfg(not(feature = "file"))]
-//             vec!["--file", "./shavee", "2048"], // --file ./shavee 2048
-//             #[cfg(not(feature = "file"))]
-//             vec!["--port", "80", "-f", "./shavee", "4096"], // --port 80 --file ./shavee 4096
-//             #[cfg(not(feature = "file"))]
-//             vec!["--file", "./shavee"], // --file ./shavee
-//             #[cfg(not(feature = "file"))]
-//             vec!["--port", "80", "-f", "./shavee"], // --port 80 --file ./shavee
-//             #[cfg(not(feature = "file"))]
-//             vec!["-P", "443", "-f", "./shavee"], // -P 443 --file ./shavee
-//             #[cfg(not(feature = "file"))]
-//             vec!["-f", "./shavee", "-z", "zroot/test"], // -f ./shavee -z zroot/test
-//         ];
+        // For the invalid arguments, there is no output struct and we only check for error
 
-//         for index in 0..invalid_arguments.len() {
-//             let mut args = Vec::new();
-//             //note: the first argument is always the executable name: crate_name!()
-//             args.push(crate_name!());
-//             args.extend(invalid_arguments[index].clone());
-//             CliArgs::new_from(args.iter()).unwrap_err();
-//         }
-//     }
-// }
+        let invalid_arguments = [
+            vec!["--zset"],   // --zset
+            vec!["-P"],       // -P
+            vec!["-c"],       // -c
+            vec!["--create"], // --create
+            #[cfg(feature = "yubikey")]
+            vec!["-s"], // -s
+            #[cfg(feature = "yubikey")]
+            vec!["--slot"], // --slot
+            #[cfg(feature = "yubikey")]
+            vec!["--slot", "2"], // --slot 2
+            #[cfg(feature = "yubikey")]
+            vec!["-y", "-s", "3"], // -y -s 3
+            #[cfg(feature = "file")]
+            vec!["--file"], // --file
+            #[cfg(feature = "file")]
+            vec!["-f"], // -f
+            #[cfg(feature = "file")]
+            vec!["--port", "80"], // --port 80
+            #[cfg(feature = "file")]
+            vec!["-z"], // -z
+            #[cfg(any(feature = "file", feature = "yubikey"))]
+            vec!["-y", "-f", "./shavee"], // -y -f ./shavee
+            // The following tests that error is returned when yubikey 2fa is disabled at compile
+            #[cfg(not(feature = "yubikey"))]
+            vec!["-y", "-s", "1", "-c", "-z", "zroot/test/"], // -y -s 1 -c -z zroot/test/
+            #[cfg(not(feature = "yubikey"))]
+            vec!["-y"], // -y
+            #[cfg(not(feature = "yubikey"))]
+            vec!["-y", "-s", "1"], // -y -s 1
+            #[cfg(not(feature = "yubikey"))]
+            vec!["--yubi", "--slot", "2"], // --yubi --slot 2
+            // The following tests that error is returned when file 2fa is disabled at compile
+            #[cfg(not(feature = "file"))]
+            vec!["--file", "./shavee", "2048"], // --file ./shavee 2048
+            #[cfg(not(feature = "file"))]
+            vec!["--port", "80", "-f", "./shavee", "4096"], // --port 80 --file ./shavee 4096
+            #[cfg(not(feature = "file"))]
+            vec!["--file", "./shavee"], // --file ./shavee
+            #[cfg(not(feature = "file"))]
+            vec!["--port", "80", "-f", "./shavee"], // --port 80 --file ./shavee
+            #[cfg(not(feature = "file"))]
+            vec!["-P", "443", "-f", "./shavee"], // -P 443 --file ./shavee
+            #[cfg(not(feature = "file"))]
+            vec!["-f", "./shavee", "-z", "zroot/test"], // -f ./shavee -z zroot/test
+        ];
+
+        for index in 0..invalid_arguments.len() {
+            let mut args = Vec::new();
+            //note: the first argument is always the executable name: crate_name!()
+            args.push(crate_name!());
+            args.extend(invalid_arguments[index].clone());
+            CliArgs::new_from(args.iter()).unwrap_err();
+        }
+    }
+}

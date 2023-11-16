@@ -97,62 +97,35 @@ pub fn error(_message: &str) -> () {
     ();
 }
 
-// #[cfg(test)]
-// mod tests {
-//     use super::*;
+#[cfg(test)]
+mod tests {
+    use super::*;
 
-//     //This tests port_check() function for the valid ports
-//     #[test]
-//     fn port_check_test() {
-//         crate::trace_init(false);
-//         //Few examples of valid ports. Important to have the boundary values tested.
-//         let valid_ports = ["1", "80", "65535"];
-//         for valid_port in valid_ports {
-//             match port_check(valid_port) {
-//                 Err(_) => panic!("The port number {} should have been accepted!", valid_port),
-//                 Ok(()) => continue,
-//             }
-//         }
+    #[test]
+    fn parse_file_size_arguments_test() {
+        crate::trace_init(false);
+        // test for when both file and size is provided
+        assert_eq!(
+            parse_file_size_arguments(vec![&"./shavee".to_string(), &"2048".to_string()]).unwrap(),
+            (Some(String::from("./shavee")), Some(2048 as u64))
+        );
 
-//         //Few examples of invalid ports. Important to have the boundary values tested.
-//         //Port 0 is reserved by IANA, it is technically invalid to use.
-//         let invalid_ports = ["-1", "65536", "a", "0"];
-//         for invalid_port in invalid_ports {
-//             match port_check(invalid_port) {
-//                 Ok(()) => panic!(
-//                     "The port number {} should not have been accepted!",
-//                     invalid_port
-//                 ),
-//                 Err(_) => continue,
-//             }
-//         }
-//     }
+        // test for when only file is provided
+        assert_eq!(
+            parse_file_size_arguments(vec![&"./shavee".to_string()]).unwrap(),
+            (Some(String::from("./shavee")), None)
+        );
 
-//     #[test]
-//     fn parse_file_size_arguments_test() {
-//         crate::trace_init(false);
-//         // test for when both file and size is provided
-//         assert_eq!(
-//             parse_file_size_arguments(vec!["./shavee", "2048"]).unwrap(),
-//             (Some(String::from("./shavee")), Some(2048 as u64))
-//         );
+        // test for when there is an empty input
+        assert_eq!(
+            parse_file_size_arguments(vec![&"".to_string()]).unwrap(),
+            (Some(String::from("")), None)
+        );
 
-//         // test for when only file is provided
-//         assert_eq!(
-//             parse_file_size_arguments(vec!["./shavee"]).unwrap(),
-//             (Some(String::from("./shavee")), None)
-//         );
+        // test for reporting error when size is invalid
+        parse_file_size_arguments(vec![&"./shavee".to_string(), &"ten".to_string()]).unwrap_err();
 
-//         // test for when there is an empty input
-//         assert_eq!(
-//             parse_file_size_arguments(vec![""]).unwrap(),
-//             (Some(String::from("")), None)
-//         );
-
-//         // test for reporting error when size is invalid
-//         parse_file_size_arguments(vec!["./shavee", "ten"]).unwrap_err();
-
-//         // test for reporting error when more than 2 entries are provided
-//         parse_file_size_arguments(vec!["./shavee", "2048", "ten"]).unwrap_err();
-//     }
-// }
+        // test for reporting error when more than 2 entries are provided
+        parse_file_size_arguments(vec![&"./shavee".to_string(), &"2048".to_string(), &"ten".to_string()]).unwrap_err();
+    }
+}
