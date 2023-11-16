@@ -1,4 +1,4 @@
-
+// Struct to store the second factor config
 #[derive(Debug, Clone, PartialEq)]
 pub enum TwoFactorMode {
     #[cfg(feature = "yubikey")]
