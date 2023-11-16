@@ -1,5 +1,8 @@
+use std::u16;
+
+use clap::builder::PossibleValuesParser;
 //TODO (Issue #16): Implement clap_config() once it is ported to clap 3.0
-use clap::{crate_authors, crate_description, crate_name, crate_version, App, Arg};
+use clap::{crate_authors, crate_description, crate_name, crate_version, Arg, ArgMatches, Command};
 use shavee_core::structs::TwoFactorMode;
 use shavee_core::zfs::Dataset;
 
@@ -39,15 +42,16 @@ impl CliArgs {
         I: Iterator<Item = T>,
         T: Into<std::ffi::OsString> + Clone,
     {
-        let cli_app = App::new(crate_name!())
+        let possible_values_slot = ["1", "2"].iter();
+        let cli_app = Command::new(crate_name!())
             .about(crate_description!()) // Define APP and args
             .author(crate_authors!())
             .version(crate_version!())
             .arg(
                 Arg::new("create")
                     .short('c')
+                    .num_args(0)
                     .long("create")
-                    .takes_value(false)
                     .required(false)
                     .requires("zset")
                     .next_line_help(true)   // long help description will be printed in the next line
@@ -56,8 +60,8 @@ impl CliArgs {
             .arg(
                 Arg::new("zset")
                     .short('z')
+                    .num_args(1)
                     .long("zset")
-                    .takes_value(true)
                     .value_name("ZFS dataset")
                     .required(false)
                     .next_line_help(true)   // long help description will be printed in the next line
@@ -69,20 +73,20 @@ impl CliArgs {
                 Arg::new("yubikey")
                     .long("yubi")
                     .short('y')
+                    .num_args(0)
                     .help("Use Yubikey HMAC as second factor")
                     .required(false)
-                    .takes_value(false)
                     .hide(!cfg!(feature = "yubikey")) // hide it in help if feature is disabled
                     .conflicts_with("keyfile"), // yubikey xor keyfile, not both.
             )
             .arg(
                 Arg::new("slot")
                     .short('s')
+                    .num_args(1)
                     .long("slot")
                     .help("Yubikey HMAC Slot")
-                    .takes_value(true)
                     .value_name("HMAC slot")
-                    .possible_values(&["1", "2"]) // putting limit on acceptable inputs
+                    .value_parser(PossibleValuesParser::new(possible_values_slot))
                     .hide(!cfg!(feature = "yubikey")) // hide it in help if feature is disabled
                     .required(false)
                     .requires("yubikey"), // it must be accompanied by yubikey option
@@ -91,8 +95,8 @@ impl CliArgs {
                 Arg::new("print")
                     .short('p')
                     .long("print")
+                    .num_args(0)
                     .help("Print Secret key for a Dataset")
-                    .takes_value(false)
                     .required(false)
                     .requires("zset")
             )
@@ -100,8 +104,8 @@ impl CliArgs {
                 Arg::new("mount")
                     .short('m')
                     .long("mount")
+                    .num_args(0)
                     .help("Unlock and Mount Dataset")
-                    .takes_value(false)
                     .required(false)
                     .requires("zset")
             )
@@ -110,10 +114,9 @@ impl CliArgs {
                     .short('a')
                     .long("auto")
                     .help("Try to automatically guess the unlock config for a dataset")
-                    .takes_value(false)
                     .required(false)
                     .requires("zset")
-                    .requires("print" )
+                    .num_args(0)
                     .conflicts_with("create")
                     .requires("autogroup")
             )
@@ -129,21 +132,20 @@ impl CliArgs {
                     1 and 2^(64).")
                     .hide(!cfg!(feature = "file")) // hide it in help if feature is disabled
                     .required(false)
-                    .takes_value(true)
                     .value_name("FILE|ADDRESS [SIZE]")
-                    .max_values(2)
+                    .num_args(2)
                     .conflicts_with("yubikey"), // keyfile xor yubikey, not both.
             )
             .arg(
                 Arg::new("port")
                     .short('P')
                     .long("port")
-                    .takes_value(true)
+                    .num_args(1)
                     .value_name("port number")
                     .hide(!cfg!(feature = "file"))  // hide it in help if feature is disabled
                     .required(false)
-                    .requires("keyfile")    // port must be accompanied by keyfile option
-                    .validator(shavee_core::port_check)  // validate that port parameter is "valid"
+                    .requires("keyfile")
+                    .value_parser(clap::value_parser!(u16))    // port must be accompanied by keyfile option
                     .help("Set port for HTTP(S) and SFTP requests"),
             );
 
@@ -154,56 +156,62 @@ impl CliArgs {
         // check for keyfile argument if parse them if needed.
         // otherwise fill them with None
         #[cfg(feature = "file")]
-        let (file, size) = match arg.values_of("keyfile") {
-            Some(values) => {
-                // convert the values to a vector
-                let file_size_argument: Vec<&str> = values.collect();
-                shavee_core::parse_file_size_arguments(file_size_argument)?
+        let fileargs = arg.get_many("keyfile");
+        let (file, size) = match fileargs {
+            Some(s) => {
+                let a: Vec<&String> = s.collect();
+                shavee_core::parse_file_size_arguments(a).expect("Arg Pass error")
             }
             None => (None, None),
         };
 
         // if zset arg is entered, then its value will be used
         // NOTE: validating dataset is done by zfs module
-        let dataset = match arg.value_of("zset").map(str::to_string) {
-            Some(mut s) => {
-                if s.ends_with("/") {
-                    s.pop();
+
+        let datasetvalue: Option<&String> = arg.get_one("zset");
+        let dataset = match datasetvalue {
+            Some(d) => {
+                let mut d = d.to_owned();
+                if d.ends_with("/") {
+                    d.pop();
                 };
-                Some(s)
+                Some(d.to_owned())
             }
             None => None,
         };
 
         // The port arguments are <u16> or None (not entered by user)
         #[cfg(feature = "file")]
-        let port = arg
-            .value_of("port")
-            .map(|p| p.parse::<u16>().expect(shavee_core::UNREACHABLE_CODE));
+        let port: Option<&u16> = arg.get_one("port");
+        let port = match port {
+            Some(p) => Some(p.to_owned()),
+            None => None,
+        };
 
         // The accepted slot arguments are Some (1 or 2) or None (not entered by user)
         // Default value if not entered is 2
         #[cfg(feature = "yubikey")]
-        let yslot = match arg.value_of("slot") {
-            // exceptions should not happen, because the entry is already validated by clap
-            Some(s) => s.parse::<u8>().expect(shavee_core::UNREACHABLE_CODE),
-            None => 2,
+        let yslot: Option<&String> = arg.get_one("slot");
+        let yslot: String = match yslot {
+            Some(s) => s.to_owned(),
+            None => "2".to_string(),
         };
+        let yslot = yslot.as_str().as_bytes()[0];
 
-        let operation = if arg.is_present("create") {
+        let operation = if cmdpresent(&arg, "create") {
             let dataset = Dataset::new(dataset.expect(shavee_core::UNREACHABLE_CODE))?;
             Operations::Create { dataset }
-        } else if arg.is_present("mount") {
+        } else if cmdpresent(&arg, "mount") {
             let dataset = Dataset::new(dataset.expect(shavee_core::UNREACHABLE_CODE))?;
             Operations::Mount { dataset }
-        } else if arg.is_present("print") {
+        } else if cmdpresent(&arg, "print") {
             let dataset = Dataset::new(dataset.expect(shavee_core::UNREACHABLE_CODE))?;
             Operations::PrintDataset { dataset }
         } else {
             Operations::Print
         };
 
-        let operationmode = if arg.is_present("auto") {
+        let operationmode = if cmdpresent(&arg, "auto") {
             OperationMode::Auto {
                 operation: operation,
             }
@@ -217,10 +225,10 @@ impl CliArgs {
         #[allow(unused_mut)]
         let mut second_factor = TwoFactorMode::Password;
         // if yubikey feature is enabled, check for Yubikey 2FA mode.
-        if arg.is_present("yubikey") {
+        if cmdpresent(&arg, "yubikey") {
             if !cfg!(feature = "yubikey") {
                 return Err(clap::Error::raw(
-                    clap::ErrorKind::ArgumentNotFound,
+                    clap::error::ErrorKind::MissingRequiredArgument,
                     "Yubikey feature is disabled at compile.",
                 ));
             }
@@ -231,10 +239,10 @@ impl CliArgs {
         };
 
         // if file feature is enabled, check for file 2FA mode
-        if arg.is_present("keyfile") {
+        if cmdpresent(&arg, "keyfile") {
             if !cfg!(feature = "file") {
                 return Err(clap::Error::raw(
-                    clap::ErrorKind::ArgumentNotFound,
+                    clap::error::ErrorKind::MissingRequiredArgument,
                     "File 2FA feature is disabled at compile.",
                 ));
             }
@@ -252,6 +260,17 @@ impl CliArgs {
     }
 }
 
+fn cmdpresent(args: &ArgMatches, cmd: &str) -> bool {
+    let a = match args.value_source(cmd) {
+        Some(s) => s,
+        None => return false,
+    };
+
+    if a == clap::parser::ValueSource::CommandLine {
+        return true;
+    }
+    false
+}
 // This section implements unit tests for the functions in this module.
 // Any code change in this module must pass unit tests below.
 // #[cfg(test)]
