@@ -1,8 +1,8 @@
 mod args;
-use atty::Stream;
 use args::*;
-use std::io::stdin;
+use atty::Stream;
 use shavee_core::structs::TwoFactorMode;
+use std::io::stdin;
 
 /// main() collect the arguments from command line, pass them to run() and print any
 /// messages upon exiting the program
@@ -92,21 +92,13 @@ fn run(args: CliArgs) -> Result<Option<String>, Box<dyn std::error::Error>> {
 
     shavee_core::trace("Operation Mode:");
 
-
     // Use this variable as the function return to be used for printing to stdio if needed.
     let mut exit_result: Option<String> = None;
-       match args.operation {
-
-
-        OperationMode::Auto { operation } => {
-
-
-            match operation {
-
-
-                Operations::Mount { dataset } => {
-                    let second_factor = dataset.get_property_operation()?;
-                    let salt = shavee_core::logic::get_salt(Some(&dataset))?;
+    match args.operation {
+        OperationMode::Auto { operation } => match operation {
+            Operations::Mount { dataset } => {
+                let second_factor = dataset.get_property_operation()?;
+                let salt = shavee_core::logic::get_salt(Some(&dataset))?;
                 match second_factor {
                     #[cfg(feature = "yubikey")]
                     TwoFactorMode::Yubikey { yslot } => {
@@ -118,7 +110,7 @@ fn run(args: CliArgs) -> Result<Option<String>, Box<dyn std::error::Error>> {
                         .pass_unlock(shavee_core::logic::password_mode_hash(&password, &salt)?)?,
                 }
                 exit_result = None;
-            },
+            }
             Operations::PrintDataset { dataset } => {
                 let salt = shavee_core::logic::get_salt(Some(&dataset))?;
                 let second_factor = dataset.get_property_operation()?;
@@ -134,29 +126,26 @@ fn run(args: CliArgs) -> Result<Option<String>, Box<dyn std::error::Error>> {
                     TwoFactorMode::Password => {
                         shavee_core::logic::password_mode_hash(&password, &salt)?
                     }
-            };
-            exit_result = Some(passphrase); 
-         },
-            Operations::Create {dataset:_} => {},
-            Operations::Print => {},
+                };
+                exit_result = Some(passphrase);
+            }
+            Operations::Create { dataset: _ } => {}
+            Operations::Print => {}
+        },
 
-        }},
-        
-        
-        
         OperationMode::Manual { operation } => {
-
             match operation {
                 Operations::Create { dataset } => {
-                    // Ask and check for password a second time
-                    let binding =
-                        rpassword::prompt_password("Retype  Password: ").map_err(|e| e.to_string())?;
-        
-                    if password != binding.as_bytes() {
-                        return Err("Passwords do not match.".into());
-                    }
-                    drop(binding);
-        
+                    // Ask and check for password a second time if input is stdin
+                    if atty::is(Stream::Stdin) {
+                        let binding = rpassword::prompt_password("Retype  Password: ")
+                            .map_err(|e| e.to_string())?;
+
+                        if password != binding.as_bytes() {
+                            return Err("Passwords do not match.".into());
+                        }
+                    };
+
                     shavee_core::trace(&format!(
                         "\tCreate ZFS dataset: \"{}\" using \"{:?}\" method.",
                         dataset.to_string(),
@@ -183,7 +172,7 @@ fn run(args: CliArgs) -> Result<Option<String>, Box<dyn std::error::Error>> {
                         args.second_factor,
                         &base64::Engine::encode(&shavee_core::logic::BASE64_ENGINE, salt),
                     )?;
-        
+
                     exit_result = None;
                 }
                 Operations::Mount { dataset } => {
@@ -194,11 +183,16 @@ fn run(args: CliArgs) -> Result<Option<String>, Box<dyn std::error::Error>> {
                     let salt = shavee_core::logic::get_salt(Some(&dataset))?;
                     match args.second_factor {
                         #[cfg(feature = "yubikey")]
-                        TwoFactorMode::Yubikey { yslot } => dataset.yubi_unlock(password, yslot, &salt)?,
+                        TwoFactorMode::Yubikey { yslot } => {
+                            dataset.yubi_unlock(password, yslot, &salt)?
+                        }
                         #[cfg(feature = "file")]
-                        TwoFactorMode::File { .. } => dataset.file_unlock(password, filehash, &salt)?,
-                        TwoFactorMode::Password => dataset
-                            .pass_unlock(shavee_core::logic::password_mode_hash(&password, &salt)?)?,
+                        TwoFactorMode::File { .. } => {
+                            dataset.file_unlock(password, filehash, &salt)?
+                        }
+                        TwoFactorMode::Password => dataset.pass_unlock(
+                            shavee_core::logic::password_mode_hash(&password, &salt)?,
+                        )?,
                     }
                     exit_result = None;
                 }
@@ -242,9 +236,7 @@ fn run(args: CliArgs) -> Result<Option<String>, Box<dyn std::error::Error>> {
                     exit_result = Some(passphrase)
                 }
             };
-
-
-        },
+        }
     };
 
     Ok(exit_result)
@@ -655,7 +647,6 @@ fn run(args: CliArgs) -> Result<Option<String>, Box<dyn std::error::Error>> {
 //      *  In this this section the supporting functions that are needed for *
 //      *  Integration and unit tests are implemented.                       *
 //      *********************************************************************/
-
 //     fn random_string(length: u8) -> String {
 //         use random_string::generate;
 

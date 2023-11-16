@@ -58,8 +58,6 @@ impl PamServiceModule for PamShavee {
     }
 
     fn authenticate(pam: Pam, _flags: PamFlags, args: Vec<String>) -> PamError {
-        eprintln!("{}", args[0]);
-
         let mut dataset_name = args[0].clone();
         if dataset_name.ends_with("/") {
             dataset_name.pop();
@@ -75,17 +73,26 @@ impl PamServiceModule for PamShavee {
 
         let dataset = match Dataset::new(dataset_name) {
             Ok(d) => d,
-            Err(_) => return PamError::INCOMPLETE,
+            Err(e) => {
+                eprintln!("Invalid dataset name: {}", e);
+                return PamError::INCOMPLETE;
+            }
         };
 
         let umode = match dataset.get_property_operation() {
             Ok(k) => k,
-            Err(_) => return PamError::SERVICE_ERR,
+            Err(e) => {
+                eprintln!("Error Getting Dataset Properties: {}", e);
+                return PamError::BAD_ITEM;
+            }
         };
 
         let pass = match unwrap_pam_user_pass(pam.get_authtok(None), PamError::AUTHINFO_UNAVAIL) {
             Ok(slice) => slice.to_string(),
-            Err(error) => return error,
+            Err(error) => {
+                eprintln!("Error Getting Password: {}", error);
+                return error;
+            }
         };
 
         let salt = match logic::get_salt(Some(&dataset)) {
