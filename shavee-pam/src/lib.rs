@@ -98,12 +98,12 @@ impl PamServiceModule for PamShavee {
         let password: &[u8] = &pass.into_bytes();
         let result = match umode {
             #[cfg(feature = "yubikey")]
-            shavee_core::binargs::TwoFactorMode::Yubikey { yslot } => {
+            shavee_core::structs::TwoFactorMode::Yubikey { yslot } => {
                 dataset.yubi_unlock(password, yslot, &salt)
             }
 
             #[cfg(feature = "file")]
-            shavee_core::binargs::TwoFactorMode::File { file, port, size } => {
+            shavee_core::structs::TwoFactorMode::File { file, port, size } => {
                 let filehash = match filehash::get_filehash(&file, port, size) {
                     Ok(hash) => hash,
                     Err(error) => {
@@ -114,7 +114,7 @@ impl PamServiceModule for PamShavee {
                 dataset.file_unlock(password, filehash, &salt)
             }
 
-            shavee_core::binargs::TwoFactorMode::Password => {
+            shavee_core::structs::TwoFactorMode::Password => {
                 let key = match logic::password_mode_hash(password, &salt) {
                     Ok(key) => key,
                     Err(error) => {

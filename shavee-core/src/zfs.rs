@@ -2,7 +2,7 @@ use std::io::prelude::*;
 use std::process::Command;
 use std::u64;
 
-use crate::binargs::TwoFactorMode;
+use crate::structs::TwoFactorMode;
 
 /// ZFS property used to store the random salt
 pub const ZFS_PROPERTY_SALT: &str = "com.github.shavee:salt";
@@ -52,23 +52,23 @@ impl Dataset {
 
     pub fn set_property_operation(
         &self,
-        args: crate::binargs::TwoFactorMode,
+        args: crate::structs::TwoFactorMode,
         salt: &str,
     ) -> Result<(), std::io::Error> {
         self.set_property(ZFS_PROPERTY_SALT.to_owned(), salt)?;
 
         match args {
-            crate::binargs::TwoFactorMode::Yubikey { yslot } => {
+            crate::structs::TwoFactorMode::Yubikey { yslot } => {
                 self.set_property(ZFS_PROPERTY_SECOND_FACTOR.to_owned(), "Yubikey")?;
                 self.set_property(
                     ZFS_PROPERTY_YUBI_SLOT.to_owned(),
                     yslot.to_string().as_str(),
                 )?;
             }
-            crate::binargs::TwoFactorMode::Password => {
+            crate::structs::TwoFactorMode::Password => {
                 self.set_property(ZFS_PROPERTY_SECOND_FACTOR.to_owned(), "Password")?;
             }
-            crate::binargs::TwoFactorMode::File { file, port, size } => {
+            crate::structs::TwoFactorMode::File { file, port, size } => {
                 self.set_property(ZFS_PROPERTY_SECOND_FACTOR.to_owned(), "File")?;
                 self.set_property(ZFS_PROPERTY_FILE_PATH.to_owned(), file.as_str())?;
 

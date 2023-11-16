@@ -1,21 +1,7 @@
 //TODO (Issue #16): Implement clap_config() once it is ported to clap 3.0
-use crate::zfs::Dataset;
+use shavee_core::zfs::Dataset;
+use shavee_core::structs::TwoFactorMode;
 use clap::{crate_authors, crate_description, crate_name, crate_version, App, Arg};
-
-#[derive(Debug, Clone, PartialEq)]
-pub enum TwoFactorMode {
-    #[cfg(feature = "yubikey")]
-    Yubikey {
-        yslot: u8,
-    },
-    #[cfg(feature = "file")]
-    File {
-        file: String,
-        port: Option<u16>,
-        size: Option<u64>,
-    },
-    Password,
-}
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum OperationMode {
@@ -38,7 +24,7 @@ pub enum OperationMode {
 #[derive(Debug, Clone, PartialEq)]
 pub struct CliArgs {
     pub operation: OperationMode,
-    pub second_factor: TwoFactorMode,
+    pub second_factor: shavee_core::structs::TwoFactorMode,
 }
 
 /// new() function calls new_from() to parse the arguments
@@ -157,7 +143,7 @@ impl CliArgs {
                     .hide(!cfg!(feature = "file"))  // hide it in help if feature is disabled
                     .required(false)
                     .requires("keyfile")    // port must be accompanied by keyfile option
-                    .validator(crate::port_check)  // validate that port parameter is "valid"
+                    .validator(shavee_core::port_check)  // validate that port parameter is "valid"
                     .help("Set port for HTTP(S) and SFTP requests"),
             );
 
@@ -172,7 +158,7 @@ impl CliArgs {
             Some(values) => {
                 // convert the values to a vector
                 let file_size_argument: Vec<&str> = values.collect();
-                crate::parse_file_size_arguments(file_size_argument)?
+                shavee_core::parse_file_size_arguments(file_size_argument)?
             }
             None => (None, None),
         };
@@ -193,25 +179,25 @@ impl CliArgs {
         #[cfg(feature = "file")]
         let port = arg
             .value_of("port")
-            .map(|p| p.parse::<u16>().expect(crate::UNREACHABLE_CODE));
+            .map(|p| p.parse::<u16>().expect(shavee_core::UNREACHABLE_CODE));
 
         // The accepted slot arguments are Some (1 or 2) or None (not entered by user)
         // Default value if not entered is 2
         #[cfg(feature = "yubikey")]
         let yslot = match arg.value_of("slot") {
             // exceptions should not happen, because the entry is already validated by clap
-            Some(s) => s.parse::<u8>().expect(crate::UNREACHABLE_CODE),
+            Some(s) => s.parse::<u8>().expect(shavee_core::UNREACHABLE_CODE),
             None => 2,
         };
 
         let mut operation = if arg.is_present("create") {
-            let dataset = Dataset::new(dataset.expect(crate::UNREACHABLE_CODE))?;
+            let dataset = Dataset::new(dataset.expect(shavee_core::UNREACHABLE_CODE))?;
             OperationMode::Create { dataset }
         } else if arg.is_present("mount") {
-            let dataset = Dataset::new(dataset.expect(crate::UNREACHABLE_CODE))?;
+            let dataset = Dataset::new(dataset.expect(shavee_core::UNREACHABLE_CODE))?;
             OperationMode::Mount { dataset }
         } else if arg.is_present("print") {
-            let dataset = Dataset::new(dataset.expect(crate::UNREACHABLE_CODE))?;
+            let dataset = Dataset::new(dataset.expect(shavee_core::UNREACHABLE_CODE))?;
             OperationMode::PrintDataset { dataset }
         } else {
             OperationMode::Print
@@ -269,7 +255,7 @@ impl CliArgs {
             }
             #[cfg(feature = "file")]
             {
-                let file = file.expect(crate::UNREACHABLE_CODE);
+                let file = file.expect(shavee_core::UNREACHABLE_CODE);
                 second_factor = TwoFactorMode::File { file, port, size };
             }
         };

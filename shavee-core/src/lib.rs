@@ -3,7 +3,7 @@ pub mod logic;
 pub mod password;
 pub mod yubikey;
 pub mod zfs;
-pub mod binargs;
+pub mod structs;
 
 pub const UNREACHABLE_CODE: &str =
     "Panic! Something unexpected happened! Please help by reporting it as a bug.";

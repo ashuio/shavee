@@ -21,6 +21,7 @@ sha2 = "0.10.8"
 rpassword = "7.3.1"
 base64 = "0.21.5"
 atty = "0.2.14"
+clap = { version = "3", features = ["cargo"] }
 
 [dev-dependencies]
 stdio-override = "0.1.3"
