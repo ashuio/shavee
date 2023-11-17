@@ -101,6 +101,7 @@ Flags/Options
 * `-s` : Set Yubikey HMAC Slot (Can be either 1 or 2)
 * `-c` : Create/Change key of ZFS dataset with the derived encryption key
 * `-m` : Unlocks and Mounts the ZFS Dataset.
+* `-r` : Perform Operations Recursively to all child datasets.
 * `-a` : Automatically Detect Dataset Unlock Properties ( can only be used with `Print` and `Mount` )
 * `-z` : ZFS Dataset to operate on. ( Will automatically append username in PAM module )
 
@@ -229,6 +230,8 @@ auth    optional    libshavee_pam.so <Base home Dataset>
 auth    optional    libshavee_pam.so zroot/data/home
 ``` 
 Where `zroot/data/home` mounts to `/home`
+
+NOTE: PAM module unlocks and mounts datasets recursively, any failure in any dataset will result in Failed Auth.
 
  
 
