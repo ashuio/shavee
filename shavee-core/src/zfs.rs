@@ -210,14 +210,14 @@ impl Dataset {
             // if it exists, then only change password
             Ok(list_datasets) => {
                 crate::trace("Dataset already exists, only change passphrase.");
-                for each_dataset in list_datasets {
+                let dataset = list_datasets[0].clone(); // Only use the first element
                     let mut zfs_changekey = Command::new("zfs")
                         .arg("change-key")
                         .arg("-o")
                         .arg("keylocation=prompt")
                         .arg("-o")
                         .arg("keyformat=passphrase")
-                        .arg(&each_dataset.dataset)
+                        .arg(&dataset.dataset)
                         .stdin(std::process::Stdio::piped())
                         .stderr(std::process::Stdio::piped())
                         .spawn()?;
@@ -246,7 +246,7 @@ impl Dataset {
                             String::from_utf8(result.stderr).expect(crate::UNREACHABLE_CODE),
                         ));
                     }
-                }
+                
             }
             // if dataset doesn't exists then create it
             Err(_) => {

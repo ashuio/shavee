@@ -148,7 +148,45 @@ fn run(args: CliArgs) -> Result<Option<String>, Box<dyn std::error::Error>> {
                 exit_result = None;
             }
 
-            Operations::Create { .. } => {}
+            Operations::Create { dataset } => {
+                let mut sets = vec![dataset.clone()];
+
+                match dataset.list() {
+                    Ok(d) => {
+                        sets = d;
+                    }
+                    Err(_) => {}
+                }
+
+                let second_factor = sets[0].get_property_2fa()?;
+
+                for dataset in sets {
+                    let salt = shavee_core::logic::generate_salt();
+                    match second_factor.clone() {
+                        #[cfg(feature = "yubikey")]
+                        TwoFactorMode::Yubikey { yslot } => {
+                            dataset.clone().yubi_create(password, yslot, &salt)?;
+                        }
+                        #[cfg(feature = "file")]
+                        TwoFactorMode::File { .. } => {
+                            dataset
+                                .clone()
+                                .file_create(password, filehash.clone(), &salt)?
+                        }
+                        TwoFactorMode::Password => {
+                            let password_mode_hash =
+                                shavee_core::logic::password_mode_hash(&password, &salt)?;
+                            dataset.clone().create(&password_mode_hash)?;
+                            // store generated random salt as base64 encoded in ZFS property
+                        }
+                    }
+                    dataset.set_property_2fa(
+                        second_factor.clone(),
+                        &base64::Engine::encode(&shavee_core::logic::BASE64_ENGINE, salt),
+                    )?;
+                }
+                exit_result = None;
+            }
             Operations::Print => {}
         },
 
@@ -170,27 +208,41 @@ fn run(args: CliArgs) -> Result<Option<String>, Box<dyn std::error::Error>> {
                         dataset.to_string(),
                         args.second_factor
                     ));
-                    let salt = shavee_core::logic::generate_salt();
-                    match args.second_factor {
-                        #[cfg(feature = "yubikey")]
-                        TwoFactorMode::Yubikey { yslot } => {
-                            dataset.clone().yubi_create(password, yslot, &salt)?;
+
+                    let mut sets = vec![dataset.clone()];
+
+                    match dataset.list() {
+                        Ok(d) => {
+                            sets = d;
                         }
-                        #[cfg(feature = "file")]
-                        TwoFactorMode::File { .. } => {
-                            dataset.clone().file_create(password, filehash, &salt)?
-                        }
-                        TwoFactorMode::Password => {
-                            let password_mode_hash =
-                                shavee_core::logic::password_mode_hash(&password, &salt)?;
-                            dataset.clone().create(&password_mode_hash)?;
-                            // store generated random salt as base64 encoded in ZFS property
-                        }
+                        Err(_) => {}
                     }
-                    dataset.set_property_2fa(
-                        args.second_factor,
-                        &base64::Engine::encode(&shavee_core::logic::BASE64_ENGINE, salt),
-                    )?;
+
+                    for dataset in sets {
+                        let salt = shavee_core::logic::generate_salt();
+                        match args.second_factor.clone() {
+                            #[cfg(feature = "yubikey")]
+                            TwoFactorMode::Yubikey { yslot } => {
+                                dataset.clone().yubi_create(password, yslot, &salt)?;
+                            }
+                            #[cfg(feature = "file")]
+                            TwoFactorMode::File { .. } => {
+                                dataset
+                                    .clone()
+                                    .file_create(password, filehash.clone(), &salt)?
+                            }
+                            TwoFactorMode::Password => {
+                                let password_mode_hash =
+                                    shavee_core::logic::password_mode_hash(&password, &salt)?;
+                                dataset.clone().create(&password_mode_hash)?;
+                                // store generated random salt as base64 encoded in ZFS property
+                            }
+                        }
+                        dataset.set_property_2fa(
+                            args.second_factor.clone(),
+                            &base64::Engine::encode(&shavee_core::logic::BASE64_ENGINE, salt),
+                        )?;
+                    }
 
                     exit_result = None;
                 }
