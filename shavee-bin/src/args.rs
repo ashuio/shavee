@@ -8,9 +8,18 @@ use shavee_core::zfs::Dataset;
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum Operations {
-    Create { dataset: Dataset },
-    Mount { dataset: Dataset, recursive: bool },
-    PrintDataset { dataset: Dataset, recursive: bool },
+    Create {
+        dataset: Dataset,
+    },
+    Mount {
+        dataset: Dataset,
+        recursive: bool,
+    },
+    PrintDataset {
+        dataset: Dataset,
+        recursive: bool,
+        printwithname: bool,
+    },
     Print,
 }
 
@@ -109,6 +118,16 @@ impl CliArgs {
                     .help("Unlock and Mount Dataset")
                     .required(false)
                     .requires("zset")
+            )
+            .arg(
+                Arg::new("printwithname")
+                    .short('d')
+                    .long("dataset")
+                    .help("Print Secret with Dataset name.")
+                    .required(false)
+                    .requires("zset")
+                    .num_args(0)
+                    .requires("print")
             )
             .arg(
                 Arg::new("auto")
@@ -232,16 +251,18 @@ impl CliArgs {
             }
         } else if cmdpresent(&arg, "print") {
             let dataset = Dataset::new(dataset.expect(shavee_core::UNREACHABLE_CODE))?;
+            let mut recursive = false;
+            let mut printwithname = false;
             if cmdpresent(&arg, "recursive") {
-                Operations::PrintDataset {
-                    dataset: dataset,
-                    recursive: true,
-                }
-            } else {
-                Operations::Mount {
-                    dataset: dataset,
-                    recursive: false,
-                }
+                recursive = true;
+            }
+            if cmdpresent(&arg, "printwithname") {
+                printwithname = true;
+            }
+            Operations::PrintDataset {
+                dataset: dataset,
+                recursive: recursive,
+                printwithname: printwithname,
             }
         } else {
             Operations::Print
@@ -297,14 +318,15 @@ impl CliArgs {
 }
 
 fn cmdpresent(args: &ArgMatches, cmd: &str) -> bool {
-    let a = match args.value_source(cmd) {
-        Some(s) => s,
+    match args.value_source(cmd) {
+        Some(s) => {
+            if s == clap::parser::ValueSource::CommandLine {
+                return true;
+            }
+        }
         None => return false,
     };
 
-    if a == clap::parser::ValueSource::CommandLine {
-        return true;
-    }
     false
 }
 // This section implements unit tests for the functions in this module.

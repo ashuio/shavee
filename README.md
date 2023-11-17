@@ -97,6 +97,7 @@ Flags/Options
 * `-y` : Use Yubikey for 2FA
 * `-f` : Use any file as 2FA, takes filepath or a HTTP(S) location as an argument.
 * `-p` : Prints out the secret key.
+* `-d` : Adds dataset name to print output.
 * `-P` : Set port for HTTP and SFTP requests (Upper case P )
 * `-s` : Set Yubikey HMAC Slot (Can be either 1 or 2)
 * `-c` : Create/Change key of ZFS dataset with the derived encryption key

@@ -120,7 +120,11 @@ fn run(args: CliArgs) -> Result<Option<String>, Box<dyn std::error::Error>> {
                 }
                 exit_result = None;
             }
-            Operations::PrintDataset { dataset, recursive } => {
+            Operations::PrintDataset {
+                dataset,
+                recursive,
+                printwithname,
+            } => {
                 let mut sets = vec![dataset.clone()];
                 if recursive {
                     sets = dataset.list()?;
@@ -143,7 +147,12 @@ fn run(args: CliArgs) -> Result<Option<String>, Box<dyn std::error::Error>> {
                             shavee_core::logic::password_mode_hash(&password, &salt)?
                         }
                     };
-                    println!("{}", passphrase);
+
+                    if printwithname {
+                        println!("{}    {}", d.to_string(), passphrase);
+                    } else {
+                        println!("{}", passphrase);
+                    }
                 }
                 exit_result = None;
             }
@@ -274,7 +283,11 @@ fn run(args: CliArgs) -> Result<Option<String>, Box<dyn std::error::Error>> {
 
                     exit_result = None;
                 }
-                Operations::PrintDataset { dataset, recursive } => {
+                Operations::PrintDataset {
+                    dataset,
+                    recursive,
+                    printwithname,
+                } => {
                     shavee_core::trace(&format!(
                         "\tPrint Secret key for \"{}\".",
                         dataset.to_string()
@@ -303,7 +316,11 @@ fn run(args: CliArgs) -> Result<Option<String>, Box<dyn std::error::Error>> {
                             }
                         };
 
-                        println!("{}", passphrase);
+                        if printwithname {
+                            println!("{}    {}", d.to_string(), passphrase);
+                        } else {
+                            println!("{}", passphrase);
+                        }
                     }
                 }
                 Operations::Print => {

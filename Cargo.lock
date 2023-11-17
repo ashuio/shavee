@@ -780,7 +780,7 @@ dependencies = [
 
 [[package]]
 name = "shavee"
-version = "0.7.0"
+version = "0.7.1"
 dependencies = [
  "atty",
  "base64",
@@ -796,7 +796,7 @@ dependencies = [
 
 [[package]]
 name = "shavee_core"
-version = "0.7.0"
+version = "0.7.1"
 dependencies = [
  "base64",
  "clap",
@@ -814,7 +814,7 @@ dependencies = [
 
 [[package]]
 name = "shavee_pam"
-version = "0.7.0"
+version = "0.7.1"
 dependencies = [
  "pamsm",
  "shavee_core",
