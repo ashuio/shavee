@@ -9,8 +9,8 @@ use shavee_core::zfs::Dataset;
 #[derive(Debug, Clone, PartialEq)]
 pub enum Operations {
     Create { dataset: Dataset },
-    Mount { dataset: Dataset },
-    PrintDataset { dataset: Dataset },
+    Mount { dataset: Dataset, recursive: bool },
+    PrintDataset { dataset: Dataset, recursive: bool },
     Print,
 }
 
@@ -121,6 +121,17 @@ impl CliArgs {
                     .conflicts_with("create")
                     .requires("autogroup")
             )
+            .arg(
+                Arg::new("recursive")
+                    .short('r')
+                    .long("recursive")
+                    .help("Perform Mount or Print Operations recursively")
+                    .required(false)
+                    .requires("zset")
+                    .num_args(0)
+                    .conflicts_with("create")
+                    .requires("autogroup")
+            )
             .group(clap::ArgGroup::new("autogroup")
             .args(&["mount", "print"])
             .multiple(false))
@@ -210,10 +221,30 @@ impl CliArgs {
             Operations::Create { dataset }
         } else if cmdpresent(&arg, "mount") {
             let dataset = Dataset::new(dataset.expect(shavee_core::UNREACHABLE_CODE))?;
-            Operations::Mount { dataset }
+            if cmdpresent(&arg, "recursive") {
+                Operations::Mount {
+                    dataset: dataset,
+                    recursive: true,
+                }
+            } else {
+                Operations::Mount {
+                    dataset: dataset,
+                    recursive: false,
+                }
+            }
         } else if cmdpresent(&arg, "print") {
             let dataset = Dataset::new(dataset.expect(shavee_core::UNREACHABLE_CODE))?;
-            Operations::PrintDataset { dataset }
+            if cmdpresent(&arg, "recursive") {
+                Operations::PrintDataset {
+                    dataset: dataset,
+                    recursive: true,
+                }
+            } else {
+                Operations::Mount {
+                    dataset: dataset,
+                    recursive: false,
+                }
+            }
         } else {
             Operations::Print
         };
@@ -310,6 +341,7 @@ mod tests {
                     operation: OperationMode::Manual {
                         operation: Operations::Mount {
                             dataset: Dataset::new("zroot/test".to_string()).unwrap(),
+                            recursive: false,
                         },
                     },
                     second_factor: TwoFactorMode::Password,
@@ -458,6 +490,7 @@ mod tests {
                     operation: OperationMode::Manual {
                         operation: Operations::Mount {
                             dataset: Dataset::new("zroot/test".to_string()).unwrap(),
+                            recursive: false,
                         },
                     },
                     second_factor: TwoFactorMode::File {

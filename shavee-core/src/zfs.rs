@@ -50,7 +50,7 @@ impl Dataset {
         Ok(Self { dataset })
     }
 
-    pub fn set_property_operation(
+    pub fn set_property_2fa(
         &self,
         args: crate::structs::TwoFactorMode,
         salt: &str,
@@ -89,7 +89,7 @@ impl Dataset {
         Ok(())
     }
 
-    pub fn get_property_operation(&self) -> Result<TwoFactorMode, std::io::Error> {
+    pub fn get_property_2fa(&self) -> Result<TwoFactorMode, std::io::Error> {
         let secondfactor = match self.get_property(ZFS_PROPERTY_SECOND_FACTOR.to_string())? {
             Some(s) => s,
             None => {
@@ -154,6 +154,7 @@ impl Dataset {
             ));
         }
     }
+
 
     // Convert the Dataset name to String
     pub fn to_string(&self) -> String {

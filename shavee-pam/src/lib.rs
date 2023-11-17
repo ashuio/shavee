@@ -79,14 +79,6 @@ impl PamServiceModule for PamShavee {
             }
         };
 
-        let umode = match dataset.get_property_operation() {
-            Ok(k) => k,
-            Err(e) => {
-                eprintln!("Error Getting Dataset Properties: {}", e);
-                return PamError::BAD_ITEM;
-            }
-        };
-
         let pass = match unwrap_pam_user_pass(pam.get_authtok(None), PamError::AUTHINFO_UNAVAIL) {
             Ok(slice) => slice.to_string(),
             Err(error) => {
@@ -95,18 +87,37 @@ impl PamServiceModule for PamShavee {
             }
         };
 
-        let salt = match logic::get_salt(Some(&dataset)) {
+       let datasets = match dataset.list(){
+            Ok(d) => d,
+            Err(_) => {
+                eprintln!("Unable to list ZFS Datasets");
+                return PamError::BAD_ITEM
+            }
+        };
+
+        for d in datasets {
+
+        let umode = match d.get_property_2fa() {
+            Ok(k) => k,
+            Err(e) => {
+                eprintln!("Error Getting Dataset Properties: {}", e);
+                return PamError::BAD_ITEM;
+            }
+        };
+
+
+        let salt = match logic::get_salt(Some(&d)) {
             Ok(salt) => salt,
             Err(error) => {
                 eprintln!("Error in determining salt: {}", error.to_string());
                 return PamError::INCOMPLETE;
             }
         };
-        let password: &[u8] = &pass.into_bytes();
+        let password: &[u8] = &pass.clone().into_bytes();
         let result = match umode {
             #[cfg(feature = "yubikey")]
             shavee_core::structs::TwoFactorMode::Yubikey { yslot } => {
-                dataset.yubi_unlock(password, yslot, &salt)
+                d.yubi_unlock(password, yslot, &salt)
             }
 
             #[cfg(feature = "file")]
@@ -118,7 +129,7 @@ impl PamServiceModule for PamShavee {
                         return PamError::AUTHINFO_UNAVAIL;
                     }
                 };
-                dataset.file_unlock(password, filehash, &salt)
+                d.file_unlock(password, filehash, &salt)
             }
 
             shavee_core::structs::TwoFactorMode::Password => {
@@ -129,17 +140,20 @@ impl PamServiceModule for PamShavee {
                         return PamError::AUTHINFO_UNAVAIL;
                     }
                 };
-                dataset.pass_unlock(key)
+                d.pass_unlock(key)
             }
         };
+    
 
         match result {
-            Ok(_) => return PamError::SUCCESS,
+            Ok(_) => {},
             Err(e) => {
                 eprintln!("Error in mounting user ZFS dataset: {}", e.to_string());
-                return PamError::AUTH_ERR;
             }
         }
+
+    }
+    PamError::SUCCESS
     }
 
     fn setcred(_: Pam, _: PamFlags, _: Vec<String>) -> PamError {
