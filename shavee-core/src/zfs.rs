@@ -2,10 +2,13 @@ use std::io::prelude::*;
 use std::process::Command;
 use std::u64;
 
+use clap::crate_version;
+
 use crate::structs::TwoFactorMode;
 
 /// ZFS property used to store the random salt
 pub const ZFS_PROPERTY_SALT: &str = "com.github.shavee:salt";
+pub const ZFS_PROPERTY_VERSION: &str = "com.github.shavee:version";
 pub const ZFS_PROPERTY_YUBI_SLOT: &str = "com.github.shavee:yubislot";
 pub const ZFS_PROPERTY_FILE_PATH: &str = "com.github.shavee:filepath";
 pub const ZFS_PROPERTY_FILE_PORT: &str = "com.github.shavee:fileport";
@@ -85,6 +88,7 @@ impl Dataset {
                 }
             }
         }
+        self.set_property(ZFS_PROPERTY_VERSION.to_string(), crate_version!())?;
 
         Ok(())
     }
@@ -155,7 +159,6 @@ impl Dataset {
         }
     }
 
-
     // Convert the Dataset name to String
     pub fn to_string(&self) -> String {
         crate::trace(&format!(
@@ -211,42 +214,41 @@ impl Dataset {
             Ok(list_datasets) => {
                 crate::trace("Dataset already exists, only change passphrase.");
                 let dataset = list_datasets[0].clone(); // Only use the first element
-                    let mut zfs_changekey = Command::new("zfs")
-                        .arg("change-key")
-                        .arg("-o")
-                        .arg("keylocation=prompt")
-                        .arg("-o")
-                        .arg("keyformat=passphrase")
-                        .arg(&dataset.dataset)
-                        .stdin(std::process::Stdio::piped())
-                        .stderr(std::process::Stdio::piped())
-                        .spawn()?;
+                let mut zfs_changekey = Command::new("zfs")
+                    .arg("change-key")
+                    .arg("-o")
+                    .arg("keylocation=prompt")
+                    .arg("-o")
+                    .arg("keyformat=passphrase")
+                    .arg(&dataset.dataset)
+                    .stdin(std::process::Stdio::piped())
+                    .stderr(std::process::Stdio::piped())
+                    .spawn()?;
 
-                    crate::trace("Executing the ZFS change-key commend!");
+                crate::trace("Executing the ZFS change-key commend!");
 
-                    let zstdin = zfs_changekey
-                        .stdin // Supply encryption key via stdin
-                        .as_mut()
-                        .ok_or(
-                            // convert None to an error
-                            std::io::Error::new(
-                                std::io::ErrorKind::BrokenPipe,
-                                "Failed to get ZFS stdin!",
-                            ),
-                        )?;
+                let zstdin = zfs_changekey
+                    .stdin // Supply encryption key via stdin
+                    .as_mut()
+                    .ok_or(
+                        // convert None to an error
+                        std::io::Error::new(
+                            std::io::ErrorKind::BrokenPipe,
+                            "Failed to get ZFS stdin!",
+                        ),
+                    )?;
 
-                    zstdin.write_all(&passphrase.as_bytes())?;
+                zstdin.write_all(&passphrase.as_bytes())?;
 
-                    // capture the error message and pass it to the calling function
-                    let result = zfs_changekey.wait_with_output()?;
-                    if !result.status.success() {
-                        crate::error("Command failed!");
-                        return Err(std::io::Error::new(
-                            std::io::ErrorKind::Unsupported,
-                            String::from_utf8(result.stderr).expect(crate::UNREACHABLE_CODE),
-                        ));
-                    }
-                
+                // capture the error message and pass it to the calling function
+                let result = zfs_changekey.wait_with_output()?;
+                if !result.status.success() {
+                    crate::error("Command failed!");
+                    return Err(std::io::Error::new(
+                        std::io::ErrorKind::Unsupported,
+                        String::from_utf8(result.stderr).expect(crate::UNREACHABLE_CODE),
+                    ));
+                }
             }
             // if dataset doesn't exists then create it
             Err(_) => {

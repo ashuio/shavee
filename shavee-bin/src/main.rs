@@ -1,7 +1,7 @@
 mod args;
 use args::*;
 use atty::Stream;
-use shavee_core::structs::TwoFactorMode;
+use shavee_core::{filehash::get_filehash, structs::TwoFactorMode};
 use std::io::stdin;
 
 /// main() collect the arguments from command line, pass them to run() and print any
@@ -34,36 +34,6 @@ fn main() -> std::process::ExitCode {
 }
 
 fn run(args: CliArgs) -> Result<Option<String>, Box<dyn std::error::Error>> {
-    // Pre-initialize the handle and filehash and use them.
-    // If multithread is needed for file hash generation
-    // if multithread file hash code is not called then handle must not be used
-    // thus initializing it with an error message.
-    #[cfg(feature = "file")]
-    let mut handle: std::thread::JoinHandle<Result<Vec<u8>, String>> =
-        std::thread::spawn(|| Err(String::from(shavee_core::UNREACHABLE_CODE)));
-
-    #[cfg(feature = "file")]
-    let mut filehash: Vec<u8> = vec![]; //empty u8 vector
-
-    // if in the file 2FA mode, then generate file hash in parallel
-    // while user is entering password
-    #[cfg(feature = "file")]
-    if let TwoFactorMode::File {
-        ref file,
-        ref port,
-        size,
-    } = args.second_factor
-    {
-        shavee_core::trace("Hashing the provided file as a 2FA.");
-        let port = port.clone();
-        let file = file.clone();
-        // start the file hash thread
-        handle = std::thread::spawn(move || {
-            shavee_core::filehash::get_filehash(&file, port, size).map_err(|e| e.to_string())
-            // map error to String
-        });
-    }
-
     let mut password = String::new();
 
     // Check if input is piped and read accordingly
@@ -80,15 +50,6 @@ fn run(args: CliArgs) -> Result<Option<String>, Box<dyn std::error::Error>> {
     // return the error to main()
 
     shavee_core::trace("Password has entered successfully.");
-
-    // if in the file 2FA mode, then wait for hash generation thread to finish
-    // and unwrap the result. In case of an error, terminate this function and
-    // return error to main().
-    #[cfg(feature = "file")]
-    if let TwoFactorMode::File { .. } = args.second_factor {
-        filehash = handle.join().unwrap()?;
-        shavee_core::trace("File is hashed successfully");
-    }
 
     shavee_core::trace("Operation Mode:");
 
@@ -110,8 +71,13 @@ fn run(args: CliArgs) -> Result<Option<String>, Box<dyn std::error::Error>> {
                             d.yubi_unlock(password, yslot, &salt)?
                         }
                         #[cfg(feature = "file")]
-                        TwoFactorMode::File { .. } => {
-                            d.file_unlock(password, filehash.clone(), &salt)?
+                        TwoFactorMode::File {
+                            ref file,
+                            port,
+                            size,
+                        } => {
+                            let filehash = get_filehash(file.clone().as_str(), port, size)?;
+                            d.file_unlock(password, filehash, &salt)?
                         }
                         TwoFactorMode::Password => d.pass_unlock(
                             shavee_core::logic::password_mode_hash(&password, &salt)?,
@@ -138,11 +104,18 @@ fn run(args: CliArgs) -> Result<Option<String>, Box<dyn std::error::Error>> {
                             shavee_core::logic::yubi_key_calculation(password, yslot, &salt)?
                         }
                         #[cfg(feature = "file")]
-                        TwoFactorMode::File { .. } => shavee_core::logic::file_key_calculation(
-                            &password,
-                            filehash.clone(),
-                            &salt,
-                        )?,
+                        TwoFactorMode::File {
+                            ref file,
+                            port,
+                            size,
+                        } => {
+                            let filehash = get_filehash(file.clone().as_str(), port, size)?;
+                            shavee_core::logic::file_key_calculation(
+                                &password,
+                                filehash.clone(),
+                                &salt,
+                            )?
+                        }
                         TwoFactorMode::Password => {
                             shavee_core::logic::password_mode_hash(&password, &salt)?
                         }
@@ -177,7 +150,12 @@ fn run(args: CliArgs) -> Result<Option<String>, Box<dyn std::error::Error>> {
                             dataset.clone().yubi_create(password, yslot, &salt)?;
                         }
                         #[cfg(feature = "file")]
-                        TwoFactorMode::File { .. } => {
+                        TwoFactorMode::File {
+                            ref file,
+                            port,
+                            size,
+                        } => {
+                            let filehash = get_filehash(file.clone().as_str(), port, size)?;
                             dataset
                                 .clone()
                                 .file_create(password, filehash.clone(), &salt)?
@@ -235,7 +213,12 @@ fn run(args: CliArgs) -> Result<Option<String>, Box<dyn std::error::Error>> {
                                 dataset.clone().yubi_create(password, yslot, &salt)?;
                             }
                             #[cfg(feature = "file")]
-                            TwoFactorMode::File { .. } => {
+                            TwoFactorMode::File {
+                                ref file,
+                                port,
+                                size,
+                            } => {
+                                let filehash = get_filehash(file.clone().as_str(), port, size)?;
                                 dataset
                                     .clone()
                                     .file_create(password, filehash.clone(), &salt)?
@@ -272,7 +255,12 @@ fn run(args: CliArgs) -> Result<Option<String>, Box<dyn std::error::Error>> {
                                 d.yubi_unlock(password, yslot, &salt)?
                             }
                             #[cfg(feature = "file")]
-                            TwoFactorMode::File { .. } => {
+                            TwoFactorMode::File {
+                                ref file,
+                                port,
+                                size,
+                            } => {
+                                let filehash = get_filehash(file.clone().as_str(), port, size)?;
                                 d.file_unlock(password, filehash.clone(), &salt)?
                             }
                             TwoFactorMode::Password => d.pass_unlock(
@@ -306,11 +294,18 @@ fn run(args: CliArgs) -> Result<Option<String>, Box<dyn std::error::Error>> {
                                 shavee_core::logic::yubi_key_calculation(password, yslot, &salt)?
                             }
                             #[cfg(feature = "file")]
-                            TwoFactorMode::File { .. } => shavee_core::logic::file_key_calculation(
-                                &password,
-                                filehash.clone(),
-                                &salt,
-                            )?,
+                            TwoFactorMode::File {
+                                ref file,
+                                port,
+                                size,
+                            } => {
+                                let filehash = get_filehash(file.clone().as_str(), port, size)?;
+                                shavee_core::logic::file_key_calculation(
+                                    &password,
+                                    filehash.clone(),
+                                    &salt,
+                                )?
+                            }
                             TwoFactorMode::Password => {
                                 shavee_core::logic::password_mode_hash(&password, &salt)?
                             }
@@ -332,7 +327,12 @@ fn run(args: CliArgs) -> Result<Option<String>, Box<dyn std::error::Error>> {
                             shavee_core::logic::yubi_key_calculation(password, yslot, &salt)?
                         }
                         #[cfg(feature = "file")]
-                        TwoFactorMode::File { .. } => {
+                        TwoFactorMode::File {
+                            ref file,
+                            port,
+                            size,
+                        } => {
+                            let filehash = get_filehash(file.clone().as_str(), port, size)?;
                             shavee_core::logic::file_key_calculation(&password, filehash, &salt)?
                         }
                         TwoFactorMode::Password => {
