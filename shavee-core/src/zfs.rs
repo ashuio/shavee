@@ -195,13 +195,21 @@ impl Dataset {
         zstdin.write_all(&passphrase.as_bytes())?;
 
         let result = zfs.wait_with_output()?;
+
         if !result.status.success() {
-            crate::error("Command failed!");
-            return Err(std::io::Error::new(
-                std::io::ErrorKind::Unsupported,
-                String::from_utf8(result.stderr).expect(crate::UNREACHABLE_CODE),
-            ));
+            let already_loaded_error_message = b"Key load error: Key already loaded".to_vec();
+            let resulterr = &result.stderr;
+            if vecispresent(&resulterr, &already_loaded_error_message) {
+                return Ok(self.clone());
+            } else {
+                crate::error("Command failed!");
+                return Err(std::io::Error::new(
+                    std::io::ErrorKind::Unsupported,
+                    String::from_utf8(result.stderr).expect(crate::UNREACHABLE_CODE),
+                ));
+            }
         }
+
         Ok(self.clone())
     }
 
@@ -409,7 +417,27 @@ impl Dataset {
 
     /// Mounts the dataset
     pub fn mount(&self) -> Result<(), std::io::Error> {
-        Dataset::simple_subcommand(self, "mount")?;
+        let output = Command::new("zfs")
+            .arg("mount")
+            .arg(&self.dataset)
+            .output()?;
+
+        if !output.status.success() {
+            let alreadymountederrormsg = b"filesystem already mounted".to_vec();
+            let errormsg = &output.stderr;
+            if vecispresent(errormsg, &alreadymountederrormsg) {
+                return Ok(());
+            } else {
+                crate::error("Command failed!");
+                return Err(std::io::Error::new(
+                    // error kind is not known
+                    std::io::ErrorKind::Other,
+                    //stderr used to generate the error message.
+                    String::from_utf8_lossy(&output.stderr).to_string(),
+                ));
+            }
+        };
+
         Ok(())
     }
 
@@ -440,6 +468,15 @@ impl Dataset {
         };
         Ok(self.to_owned())
     }
+}
+
+fn vecispresent(parent: &Vec<u8>, subset: &Vec<u8>) -> bool {
+    for i in 0..parent.len() - subset.len() + 1 {
+        if parent[i..i + subset.len()] == subset[..] {
+            return true;
+        }
+    }
+    false
 }
 
 #[cfg(test)]
@@ -746,6 +783,7 @@ mod tests {
     }
 
     //These tests checks for a reported error on non-existing dataset
+
     #[test]
     fn dataset_does_not_exists_test() {
         crate::trace_init(false);
