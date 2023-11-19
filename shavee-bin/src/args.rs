@@ -320,7 +320,7 @@ impl CliArgs {
 fn cmdpresent(args: &ArgMatches, cmd: &str) -> bool {
     match args.value_source(cmd) {
         Some(s) => {
-            if s == clap::parser::ValueSource::CommandLine {
+            if s != clap::parser::ValueSource::DefaultValue {
                 return true;
             }
         }

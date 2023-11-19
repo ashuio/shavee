@@ -5,6 +5,7 @@ use std::u64;
 use clap::crate_version;
 
 use crate::structs::TwoFactorMode;
+use crate::UNREACHABLE_CODE;
 
 /// ZFS property used to store the random salt
 pub const ZFS_PROPERTY_SALT: &str = "com.github.shavee:salt";
@@ -14,6 +15,10 @@ pub const ZFS_PROPERTY_FILE_PATH: &str = "com.github.shavee:filepath";
 pub const ZFS_PROPERTY_FILE_PORT: &str = "com.github.shavee:fileport";
 pub const ZFS_PROPERTY_FILE_SIZE: &str = "com.github.shavee:filesize";
 pub const ZFS_PROPERTY_SECOND_FACTOR: &str = "com.github.shavee:secondfactor";
+
+// ZFS Error Messages
+const ZFS_ERROR_ALREADY_MOUNTED: &str = "filesystem already mounted";
+const ZFS_ERROR_KEY_ALREADY_LOADED: &str = "Key load error: Key already loaded";
 
 #[derive(Debug, PartialEq, Clone)]
 /// Struct to store dataset
@@ -197,9 +202,8 @@ impl Dataset {
         let result = zfs.wait_with_output()?;
 
         if !result.status.success() {
-            let already_loaded_error_message = b"Key load error: Key already loaded".to_vec();
-            let resulterr = &result.stderr;
-            if vecispresent(&resulterr, &already_loaded_error_message) {
+            let resulterr = String::from_utf8(result.stderr.clone()).expect(UNREACHABLE_CODE);
+            if resulterr.find(ZFS_ERROR_KEY_ALREADY_LOADED).is_some() {
                 return Ok(self.clone());
             } else {
                 crate::error("Command failed!");
@@ -423,9 +427,8 @@ impl Dataset {
             .output()?;
 
         if !output.status.success() {
-            let alreadymountederrormsg = b"filesystem already mounted".to_vec();
-            let errormsg = &output.stderr;
-            if vecispresent(errormsg, &alreadymountederrormsg) {
+            let errormsg = String::from_utf8(output.stderr.clone()).expect(UNREACHABLE_CODE);
+            if errormsg.find(ZFS_ERROR_ALREADY_MOUNTED).is_some() {
                 return Ok(());
             } else {
                 crate::error("Command failed!");
@@ -468,15 +471,6 @@ impl Dataset {
         };
         Ok(self.to_owned())
     }
-}
-
-fn vecispresent(parent: &Vec<u8>, subset: &Vec<u8>) -> bool {
-    for i in 0..parent.len() - subset.len() + 1 {
-        if parent[i..i + subset.len()] == subset[..] {
-            return true;
-        }
-    }
-    false
 }
 
 #[cfg(test)]
