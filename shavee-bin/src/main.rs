@@ -3,6 +3,10 @@ use args::*;
 use atty::Stream;
 use shavee_core::{filehash::get_filehash, structs::TwoFactorMode};
 use std::io::stdin;
+struct DatasetKey {
+    dataset: String,
+    key: String,
+}
 
 /// main() collect the arguments from command line, pass them to run() and print any
 /// messages upon exiting the program
@@ -95,6 +99,9 @@ fn run(args: CliArgs) -> Result<Option<String>, Box<dyn std::error::Error>> {
                 if recursive {
                     sets = dataset.list()?;
                 }
+                let mut maxlength: usize = 0;
+                let mut datasetkeys: Vec<DatasetKey> = Vec::new();
+
                 for d in sets {
                     let salt = shavee_core::logic::get_salt(Some(&d))?;
                     let second_factor = d.get_property_2fa()?;
@@ -121,12 +128,29 @@ fn run(args: CliArgs) -> Result<Option<String>, Box<dyn std::error::Error>> {
                         }
                     };
 
-                    if printwithname {
-                        println!("{}    {}", d.to_string(), passphrase);
-                    } else {
-                        println!("{}", passphrase);
+                    datasetkeys.push(DatasetKey {
+                        dataset: d.to_string(),
+                        key: passphrase,
+                    });
+
+                    let length = d.to_string().len();
+
+                    if length > maxlength {
+                        maxlength = length
                     }
                 }
+
+                if printwithname {
+                    println!("\x1b[1m{:<maxlength$}    {}\x1b[0m", "Dataset", "Key");
+                    for i in datasetkeys {
+                        println!("{:<maxlength$}    {}", i.dataset, i.key);
+                    }
+                } else {
+                    for i in datasetkeys {
+                        println!("{}", i.key);
+                    }
+                }
+
                 exit_result = None;
             }
 
@@ -286,6 +310,9 @@ fn run(args: CliArgs) -> Result<Option<String>, Box<dyn std::error::Error>> {
                         sets = dataset.list()?;
                     }
 
+                    let mut maxlength: usize = 0;
+                    let mut datasetkeys: Vec<DatasetKey> = Vec::new();
+
                     for d in sets {
                         let salt = shavee_core::logic::get_salt(Some(&d))?;
                         let passphrase = match args.second_factor {
@@ -310,13 +337,29 @@ fn run(args: CliArgs) -> Result<Option<String>, Box<dyn std::error::Error>> {
                                 shavee_core::logic::password_mode_hash(&password, &salt)?
                             }
                         };
+                        datasetkeys.push(DatasetKey {
+                            dataset: d.to_string(),
+                            key: passphrase,
+                        });
+                        let length = d.to_string().len();
 
-                        if printwithname {
-                            println!("{}    {}", d.to_string(), passphrase);
-                        } else {
-                            println!("{}", passphrase);
+                        if length > maxlength {
+                            maxlength = length
                         }
                     }
+
+                    if printwithname {
+                        println!("\x1b[1m{:<maxlength$}    {}\x1b[0m", "Dataset", "Key");
+                        for i in datasetkeys {
+                            println!("{:<maxlength$}    {}", i.dataset, i.key);
+                        }
+                    } else {
+                        for i in datasetkeys {
+                            println!("{}", i.key);
+                        }
+                    }
+
+                    exit_result = None;
                 }
                 Operations::Print => {
                     shavee_core::trace("\tGenerate password.");

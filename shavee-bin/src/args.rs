@@ -6,6 +6,20 @@ use clap::{crate_authors, crate_description, crate_name, crate_version, Arg, Arg
 use shavee_core::structs::TwoFactorMode;
 use shavee_core::zfs::Dataset;
 
+// CLAP Args
+const YUBI_SLOTS: [&str; 2] = ["1", "2"];
+const SHAVEE_CREATE: &str = "SHAVEE_CREATE";
+const SHAVEE_YUBIKEY: &str = "SHAVEE_YUBIKEY";
+const SHAVEE_MODE_PRINT: &str = "SHAVEE_MODE_PRINT";
+const SHAVEE_RECURSIVE: &str = "SHAVEE_MODE_RECURSIVE";
+const SHAVEE_AUTO_DETECT: &str = "SHAVEE_AUTO_DETECT";
+const SHAVEE_MODE_PRINT_WITH_NAME: &str = "SHAVEE_MODE_PRINT_WITH_NAME";
+const SHAVEE_MODE_MOUNT: &str = "SHAVEE_MODE_MOUNT";
+const SHAVEE_YUBIKEY_SLOT: &str = "SHAVEE_YUBIKEY_SLOT";
+const SHAVEE_ZFS_DATASET: &str = "SHAVEE_ZFS_DATASET";
+const SHAVEE_ZFS_KEYFILE: &str = "SHAVEE_ZFS_KEYFILE";
+const SHAVEE_FILE_PORT: &str = "SHAVEE_FILE_PORT";
+
 #[derive(Debug, Clone, PartialEq)]
 pub enum Operations {
     Create {
@@ -51,7 +65,6 @@ impl CliArgs {
         I: Iterator<Item = T>,
         T: Into<std::ffi::OsString> + Clone,
     {
-        let possible_values_slot = ["1", "2"].iter();
         let cli_app = Command::new(crate_name!())
             .about(crate_description!()) // Define APP and args
             .author(crate_authors!())
@@ -59,6 +72,7 @@ impl CliArgs {
             .arg(
                 Arg::new("create")
                     .short('c')
+                    .env(SHAVEE_CREATE)
                     .num_args(0)
                     .long("create")
                     .required(false)
@@ -69,6 +83,7 @@ impl CliArgs {
             .arg(
                 Arg::new("zset")
                     .short('z')
+                    .env(SHAVEE_ZFS_DATASET)
                     .num_args(1)
                     .long("zset")
                     .value_name("ZFS dataset")
@@ -80,6 +95,7 @@ impl CliArgs {
             )
             .arg(
                 Arg::new("yubikey")
+                    .env(SHAVEE_YUBIKEY)
                     .long("yubi")
                     .short('y')
                     .num_args(0)
@@ -91,12 +107,13 @@ impl CliArgs {
             .arg(
                 Arg::new("slot")
                     .short('s')
+                    .env(SHAVEE_YUBIKEY_SLOT)
                     .num_args(1)
                     .long("slot")
                     .help("Yubikey HMAC Slot")
                     .value_name("HMAC slot")
                     .default_value("2")
-                    .value_parser(PossibleValuesParser::new(possible_values_slot))
+                    .value_parser(PossibleValuesParser::new(YUBI_SLOTS.iter()))
                     .hide(!cfg!(feature = "yubikey")) // hide it in help if feature is disabled
                     .required(false)
                     .requires("yubikey"), // it must be accompanied by yubikey option
@@ -104,6 +121,7 @@ impl CliArgs {
             .arg(
                 Arg::new("print")
                     .short('p')
+                    .env(SHAVEE_MODE_PRINT)
                     .long("print")
                     .num_args(0)
                     .help("Print Secret key for a Dataset")
@@ -112,6 +130,7 @@ impl CliArgs {
             )
             .arg(
                 Arg::new("mount")
+                    .env(SHAVEE_MODE_MOUNT)
                     .short('m')
                     .long("mount")
                     .num_args(0)
@@ -122,6 +141,7 @@ impl CliArgs {
             .arg(
                 Arg::new("printwithname")
                     .short('d')
+                    .env(SHAVEE_MODE_PRINT_WITH_NAME)
                     .long("dataset")
                     .help("Print Secret with Dataset name.")
                     .required(false)
@@ -132,6 +152,7 @@ impl CliArgs {
             .arg(
                 Arg::new("auto")
                     .short('a')
+                    .env(SHAVEE_AUTO_DETECT)
                     .long("auto")
                     .help("Try to automatically guess the unlock config for a dataset")
                     .required(false)
@@ -142,6 +163,7 @@ impl CliArgs {
             .arg(
                 Arg::new("recursive")
                     .short('r')
+                    .env(SHAVEE_RECURSIVE)
                     .long("recursive")
                     .help("Perform Mount or Print Operations recursively")
                     .required(false)
@@ -155,6 +177,7 @@ impl CliArgs {
             .arg(
                 Arg::new("keyfile")
                     .short('f')
+                    .env(SHAVEE_ZFS_KEYFILE)
                     .long("file")
                     .help("Use any file as second factor, takes filepath, SFTP or a HTTP(S) location as an argument. \
                     If SIZE is entered, the first SIZE in bytes will be used to generate hash. It must be number between \
@@ -168,6 +191,7 @@ impl CliArgs {
             .arg(
                 Arg::new("port")
                     .short('P')
+                    .env(SHAVEE_FILE_PORT)
                     .long("port")
                     .num_args(1)
                     .value_name("port number")
