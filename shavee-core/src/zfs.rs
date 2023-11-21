@@ -16,9 +16,25 @@ pub const ZFS_PROPERTY_FILE_PORT: &str = "com.github.shavee:fileport";
 pub const ZFS_PROPERTY_FILE_SIZE: &str = "com.github.shavee:filesize";
 pub const ZFS_PROPERTY_SECOND_FACTOR: &str = "com.github.shavee:secondfactor";
 
+#[derive(Debug, Clone, PartialEq)]
+pub enum ZfsShaveeProperties {
+    Salt,
+    SecondFactor,
+    YubikeySlot,
+    FilePath,
+    FilePort,
+    FileSize,
+    Version,
+}
+
 // ZFS Error Messages
 const ZFS_ERROR_ALREADY_MOUNTED: &str = "filesystem already mounted";
 const ZFS_ERROR_KEY_ALREADY_LOADED: &str = "Key load error: Key already loaded";
+
+pub struct DatasetProperty {
+    property: ZfsShaveeProperties,
+    value: Option<String>,
+}
 
 #[derive(Debug, PartialEq, Clone)]
 /// Struct to store dataset
@@ -63,93 +79,127 @@ impl Dataset {
         args: crate::structs::TwoFactorMode,
         salt: &str,
     ) -> Result<(), std::io::Error> {
-        self.set_property(ZFS_PROPERTY_SALT.to_owned(), salt)?;
+        let mut properties: Vec<DatasetProperty> = Vec::new();
+        properties.push(DatasetProperty {
+            property: ZfsShaveeProperties::Salt,
+            value: Some(salt.to_string()),
+        });
 
         match args {
             crate::structs::TwoFactorMode::Yubikey { yslot } => {
-                self.set_property(ZFS_PROPERTY_SECOND_FACTOR.to_owned(), "Yubikey")?;
-                self.set_property(
-                    ZFS_PROPERTY_YUBI_SLOT.to_owned(),
-                    yslot.to_string().as_str(),
-                )?;
+                properties.push(DatasetProperty {
+                    property: ZfsShaveeProperties::SecondFactor,
+                    value: Some("Yubikey".to_string()),
+                });
+                properties.push(DatasetProperty {
+                    property: ZfsShaveeProperties::YubikeySlot,
+                    value: Some(yslot.to_string()),
+                });
             }
             crate::structs::TwoFactorMode::Password => {
-                self.set_property(ZFS_PROPERTY_SECOND_FACTOR.to_owned(), "Password")?;
+                properties.push(DatasetProperty {
+                    property: ZfsShaveeProperties::SecondFactor,
+                    value: Some("Password".to_string()),
+                });
             }
             crate::structs::TwoFactorMode::File { file, port, size } => {
-                self.set_property(ZFS_PROPERTY_SECOND_FACTOR.to_owned(), "File")?;
-                self.set_property(ZFS_PROPERTY_FILE_PATH.to_owned(), file.as_str())?;
+                properties.push(DatasetProperty {
+                    property: ZfsShaveeProperties::SecondFactor,
+                    value: Some("File".to_string()),
+                });
+                properties.push(DatasetProperty {
+                    property: ZfsShaveeProperties::FilePath,
+                    value: Some(file),
+                });
 
                 match port {
-                    Some(p) => self
-                        .set_property(ZFS_PROPERTY_FILE_PORT.to_owned(), p.to_string().as_str())?,
+                    Some(p) => properties.push(DatasetProperty {
+                        property: ZfsShaveeProperties::FilePort,
+                        value: Some(p.to_string()),
+                    }),
                     None => {}
                 }
 
                 match size {
-                    Some(s) => self
-                        .set_property(ZFS_PROPERTY_FILE_SIZE.to_owned(), s.to_string().as_str())?,
+                    Some(s) => properties.push(DatasetProperty {
+                        property: ZfsShaveeProperties::FileSize,
+                        value: Some(s.to_string()),
+                    }),
                     None => {}
                 }
             }
         }
-        self.set_property(ZFS_PROPERTY_VERSION.to_string(), crate_version!())?;
+        properties.push(DatasetProperty {
+            property: ZfsShaveeProperties::Version,
+            value: Some(crate_version!().to_string()),
+        });
+        self.set_properties(properties)?;
 
         Ok(())
     }
 
     pub fn get_property_2fa(&self) -> Result<TwoFactorMode, std::io::Error> {
-        let secondfactor = match self.get_property(ZFS_PROPERTY_SECOND_FACTOR.to_string())? {
-            Some(s) => s,
-            None => {
-                return Err(std::io::Error::new(
-                    std::io::ErrorKind::NotFound,
-                    "ZFS Property missing.".to_string(),
-                ))
+        let prop_build: Vec<ZfsShaveeProperties> = vec![
+            ZfsShaveeProperties::FilePath,
+            ZfsShaveeProperties::FilePort,
+            ZfsShaveeProperties::FileSize,
+            ZfsShaveeProperties::SecondFactor,
+            ZfsShaveeProperties::YubikeySlot,
+            ZfsShaveeProperties::Version,
+            ZfsShaveeProperties::Salt,
+        ];
+        let input = self.get_properties(prop_build)?;
+
+        let mut filepath = String::new();
+        let mut fileport = String::new();
+        let mut filesize = String::new();
+        let mut secondfactor = String::new();
+        let mut yubislot = String::new();
+
+        for i in input {
+            match i.value {
+                Some(s) => match i.property {
+                    ZfsShaveeProperties::FilePath => {
+                        filepath = s;
+                    }
+                    ZfsShaveeProperties::FilePort => {
+                        fileport = s;
+                    }
+                    ZfsShaveeProperties::FileSize => {
+                        filesize = s;
+                    }
+                    ZfsShaveeProperties::Salt => {}
+                    ZfsShaveeProperties::SecondFactor => {
+                        secondfactor = s;
+                    }
+                    ZfsShaveeProperties::Version => {}
+                    ZfsShaveeProperties::YubikeySlot => {
+                        yubislot = s;
+                    }
+                },
+                None => {}
             }
-        };
+        }
 
         if secondfactor.as_str() == "Yubikey" {
-            let slot = match self.get_property(ZFS_PROPERTY_YUBI_SLOT.to_string())? {
-                Some(s) => s,
-                None => 2.to_string(),
-            };
             let result = TwoFactorMode::Yubikey {
-                yslot: slot.as_bytes()[0],
+                yslot: yubislot.parse::<u8>().expect("Invalid Yubikey Slot"),
             };
             return Ok(result);
         } else if secondfactor.as_str() == "File" {
-            let file = match self.get_property(ZFS_PROPERTY_FILE_PATH.to_string())? {
-                Some(s) => s,
-                None => {
-                    return Err(std::io::Error::new(
-                        std::io::ErrorKind::NotFound,
-                        "ZFS Property missing.".to_string(),
-                    ))
-                }
-            };
+            let mut port = None;
+            let mut size = None;
 
-            let port: Option<u16> = match self.get_property(ZFS_PROPERTY_FILE_PORT.to_string())? {
-                Some(s) => {
-                    let number = ((s.as_bytes()[0] as u16) << 8) | s.as_bytes()[1] as u16;
-                    Some(number)
-                }
-                None => None,
-            };
+            if !fileport.is_empty() {
+                port = Some(fileport.parse::<u16>().expect("Invalid Port"));
+            }
 
-            let size: Option<u64> = match self.get_property(ZFS_PROPERTY_FILE_SIZE.to_string())? {
-                Some(s) => {
-                    let number: Option<u64> = match s.parse::<u64>() {
-                        Ok(n) => Some(n),
-                        Err(_) => None,
-                    };
-                    number
-                }
-                None => None,
-            };
+            if !filesize.is_empty() {
+                size = Some(filesize.parse::<u64>().expect("Invalid File Size"));
+            }
 
             let result = TwoFactorMode::File {
-                file: file,
+                file: filepath,
                 port: port,
                 size: size,
             };
@@ -390,7 +440,146 @@ impl Dataset {
         }
     }
 
+    pub fn get_properties(
+        &self,
+        dataset_property: Vec<ZfsShaveeProperties>,
+    ) -> Result<Vec<DatasetProperty>, std::io::Error> {
+        crate::trace("Getting the ZFS dataset property.");
+        let mut cmd: Vec<String> = Vec::new();
+
+        let input = dataset_property.clone();
+
+        for i in input {
+            match i {
+                ZfsShaveeProperties::FilePath => cmd.push(ZFS_PROPERTY_FILE_PATH.to_string()),
+                ZfsShaveeProperties::FilePort => cmd.push(ZFS_PROPERTY_FILE_PORT.to_string()),
+                ZfsShaveeProperties::FileSize => cmd.push(ZFS_PROPERTY_FILE_SIZE.to_string()),
+                ZfsShaveeProperties::Salt => cmd.push(ZFS_PROPERTY_SALT.to_string()),
+                ZfsShaveeProperties::SecondFactor => {
+                    cmd.push(ZFS_PROPERTY_SECOND_FACTOR.to_string())
+                }
+                ZfsShaveeProperties::Version => cmd.push(ZFS_PROPERTY_VERSION.to_string()),
+                ZfsShaveeProperties::YubikeySlot => cmd.push(ZFS_PROPERTY_YUBI_SLOT.to_string()),
+            }
+        }
+
+        let input = cmd.join(",");
+        let mut zfs_get_property = Command::new("zfs")
+            .arg("get")
+            .arg("-H")
+            .arg("-o")
+            .arg("value")
+            .arg("-p")
+            .arg(&input)
+            .arg(&self.dataset)
+            .output()?;
+
+        if !zfs_get_property.status.success() {
+            crate::error("Command failed!");
+            return Err(std::io::Error::new(
+                // error kind is not known
+                std::io::ErrorKind::Other,
+                //stderr used to generate the error message.
+                String::from_utf8_lossy(&zfs_get_property.stderr).to_string(),
+            ));
+        }
+
+        // remove the \n (newline) character at the end of the output
+        let output_len = zfs_get_property.stdout.len().saturating_sub("\n".len());
+        zfs_get_property.stdout.truncate(output_len);
+
+        let output = String::from_utf8(zfs_get_property.stdout).map_err(|error| {
+            std::io::Error::new(
+                // error kind is not known
+                std::io::ErrorKind::InvalidInput,
+                error,
+            )
+        })?;
+
+        let mut out: Vec<Option<String>> =
+            output.split('\n').map(|s| Some(s.to_string())).collect();
+
+        for i in out.iter_mut() {
+            match i {
+                Some(s) => {
+                    if s.starts_with("-") {
+                        *i = None
+                    }
+                }
+                None => {}
+            }
+        }
+        let mut output: Vec<DatasetProperty> = Vec::new();
+        let out = dataset_property.into_iter().zip(out.into_iter());
+
+        for i in out {
+            output.push(DatasetProperty {
+                property: i.0,
+                value: i.1,
+            })
+        }
+
+        Ok(output)
+    }
+
     /// Set ZFS dataset property
+
+    pub fn set_properties(&self, properties: Vec<DatasetProperty>) -> Result<(), std::io::Error> {
+        crate::trace("Setting the ZFS dataset property.");
+        let mut command: Vec<String> = Vec::new();
+
+        for i in properties {
+            match i.property {
+                ZfsShaveeProperties::FilePath => match i.value {
+                    Some(s) => command.push(format!("{}={}", ZFS_PROPERTY_FILE_PATH, s)),
+                    None => {}
+                },
+                ZfsShaveeProperties::FilePort => match i.value {
+                    Some(s) => command.push(format!("{}={}", ZFS_PROPERTY_FILE_PORT, s)),
+                    None => {}
+                },
+                ZfsShaveeProperties::FileSize => match i.value {
+                    Some(s) => command.push(format!("{}={}", ZFS_PROPERTY_FILE_SIZE, s)),
+                    None => {}
+                },
+                ZfsShaveeProperties::Salt => match i.value {
+                    Some(s) => command.push(format!("{}={}", ZFS_PROPERTY_SALT, s)),
+                    None => {}
+                },
+                ZfsShaveeProperties::SecondFactor => match i.value {
+                    Some(s) => command.push(format!("{}={}", ZFS_PROPERTY_SECOND_FACTOR, s)),
+                    None => {}
+                },
+                ZfsShaveeProperties::YubikeySlot => match i.value {
+                    Some(s) => command.push(format!("{}={}", ZFS_PROPERTY_YUBI_SLOT, s)),
+                    None => {}
+                },
+                ZfsShaveeProperties::Version => {
+                    command.push(format!("{}={}", ZFS_PROPERTY_FILE_PORT, crate_version!()));
+                }
+            }
+        }
+
+        let cmd = command.join(" ");
+
+        let zfs_set_property = Command::new("zfs")
+            .arg("set")
+            .arg(cmd)
+            .arg(&self.dataset)
+            .output()?;
+
+        if !zfs_set_property.status.success() {
+            crate::error("Command failed!");
+            return Err(std::io::Error::new(
+                // error kind is not known
+                std::io::ErrorKind::Other,
+                //stderr used to generate the error message.
+                String::from_utf8_lossy(&zfs_set_property.stderr).to_string(),
+            ));
+        }
+        Ok(())
+    }
+
     pub fn set_property(
         &self,
         dataset_property: String,

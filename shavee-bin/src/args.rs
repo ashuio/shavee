@@ -330,6 +330,10 @@ impl CliArgs {
             #[cfg(feature = "file")]
             {
                 let file = file.expect(shavee_core::UNREACHABLE_CODE);
+                if file.starts_with(".") {
+                    eprintln!("File PATH must be absolute eg. \"/mnt/a/test.jpg\"");
+                    return Err(clap::Error::new(clap::error::ErrorKind::ValueValidation));
+                }
                 second_factor = TwoFactorMode::File { file, port, size };
             }
         };
