@@ -1,7 +1,7 @@
 mod args;
 use args::*;
 use atty::Stream;
-use shavee_core::{filehash::get_filehash, structs::TwoFactorMode};
+use shavee_core::{filehash::get_filehash, structs::TwoFactorMode, zfs::Dataset};
 use std::io::stdin;
 
 /// main() collect the arguments from command line, pass them to run() and print any
@@ -57,52 +57,68 @@ fn run(args: CliArgs) -> Result<Option<String>, Box<dyn std::error::Error>> {
     let mut exit_result: Option<String> = None;
     match args.operation {
         OperationMode::Auto { operation } => match operation {
-            Operations::Mount { dataset, recursive } => {
-                let mut sets = vec![dataset.clone()];
-                if recursive {
-                    sets = dataset.list()?;
-                }
-                for d in sets {
-                    let second_factor = d.get_property_2fa()?;
-                    let salt = shavee_core::logic::get_salt(Some(&d))?;
-                    match second_factor {
-                        #[cfg(feature = "yubikey")]
-                        TwoFactorMode::Yubikey { yslot } => {
-                            d.yubi_unlock(password, yslot, &salt)?
+            Operations::Mount {
+                datasets,
+                recursive,
+            } => {
+                for dataset in datasets {
+                    let mut sets = vec![dataset.clone()];
+                    if recursive {
+                        sets = dataset.list()?;
+                    }
+                    for d in sets {
+                        let second_factor = d.get_property_2fa()?;
+                        let salt = shavee_core::logic::get_salt(Some(&d))?;
+                        match second_factor {
+                            #[cfg(feature = "yubikey")]
+                            TwoFactorMode::Yubikey { yslot } => {
+                                d.yubi_unlock(password, yslot, &salt)?
+                            }
+                            #[cfg(feature = "file")]
+                            TwoFactorMode::File {
+                                ref file,
+                                port,
+                                size,
+                            } => {
+                                let filehash = get_filehash(file.clone().as_str(), port, size)?;
+                                d.file_unlock(password, filehash, &salt)?
+                            }
+                            TwoFactorMode::Password => d.pass_unlock(
+                                shavee_core::logic::password_mode_hash(&password, &salt)?,
+                            )?,
                         }
-                        #[cfg(feature = "file")]
-                        TwoFactorMode::File {
-                            ref file,
-                            port,
-                            size,
-                        } => {
-                            let filehash = get_filehash(file.clone().as_str(), port, size)?;
-                            d.file_unlock(password, filehash, &salt)?
-                        }
-                        TwoFactorMode::Password => d.pass_unlock(
-                            shavee_core::logic::password_mode_hash(&password, &salt)?,
-                        )?,
                     }
                 }
-                exit_result = None;
+                exit_result = None
             }
             Operations::PrintDataset {
-                dataset,
+                datasets,
                 recursive,
                 printwithname,
             } => {
-                let mut sets = vec![dataset.clone()];
-                if recursive {
-                    sets = dataset.list()?;
-                }
                 let mut maxlength: usize = 0;
-                if printwithname {
-                    for d in sets.clone() {
-                        let len = d.to_string().len();
-                        if len > maxlength {
-                            maxlength = len;
+                let mut sets: Vec<Dataset> = Vec::new();
+
+                for set in datasets {
+                    if recursive {
+                        let a = set.list()?;
+                        for d in a {
+                            sets.push(d.clone());
+                            let length = d.to_string().len();
+                            if maxlength <= length {
+                                maxlength = length;
+                            }
+                        }
+                    } else {
+                        sets.push(set.clone());
+                        let length = set.to_string().len();
+                        if maxlength <= length {
+                            maxlength = length;
                         }
                     }
+                }
+
+                if printwithname {
                     println!("\x1b[1m{:<maxlength$}    {}\x1b[0m", "Dataset", "Key");
                     println!();
                 }
@@ -143,72 +159,8 @@ fn run(args: CliArgs) -> Result<Option<String>, Box<dyn std::error::Error>> {
                 exit_result = None;
             }
 
-            Operations::Create { dataset } => {
-                let mut sets = vec![dataset.clone()];
-
-                match dataset.list() {
-                    Ok(d) => {
-                        sets = d;
-                    }
-                    Err(_) => {}
-                }
-
-                let second_factor = sets[0].get_property_2fa()?;
-
-                for dataset in sets {
-                    let salt = shavee_core::logic::generate_salt();
-                    match second_factor.clone() {
-                        #[cfg(feature = "yubikey")]
-                        TwoFactorMode::Yubikey { yslot } => {
-                            dataset.clone().yubi_create(password, yslot, &salt)?;
-                        }
-                        #[cfg(feature = "file")]
-                        TwoFactorMode::File {
-                            ref file,
-                            port,
-                            size,
-                        } => {
-                            let filehash = get_filehash(file.clone().as_str(), port, size)?;
-                            dataset
-                                .clone()
-                                .file_create(password, filehash.clone(), &salt)?
-                        }
-                        TwoFactorMode::Password => {
-                            let password_mode_hash =
-                                shavee_core::logic::password_mode_hash(&password, &salt)?;
-                            dataset.clone().create(&password_mode_hash)?;
-                            // store generated random salt as base64 encoded in ZFS property
-                        }
-                    }
-                    dataset.set_property_2fa(
-                        second_factor.clone(),
-                        &base64::Engine::encode(&shavee_core::logic::BASE64_ENGINE, salt),
-                    )?;
-                }
-                exit_result = None;
-            }
-            Operations::Print => {}
-        },
-
-        OperationMode::Manual { operation } => {
-            match operation {
-                Operations::Create { dataset } => {
-                    // Ask and check for password a second time if input is stdin
-                    if atty::is(Stream::Stdin) {
-                        let binding = rpassword::prompt_password("Retype  Password: ")
-                            .map_err(|e| e.to_string())?;
-
-                        if password != binding.as_bytes() {
-                            return Err("Passwords do not match.".into());
-                        }
-                    };
-
-                    shavee_core::trace(&format!(
-                        "\tCreate ZFS dataset: \"{}\" using \"{:?}\" method.",
-                        dataset.to_string(),
-                        args.second_factor
-                    ));
-
+            Operations::Create { datasets } => {
+                for dataset in datasets {
                     let mut sets = vec![dataset.clone()];
 
                     match dataset.list() {
@@ -218,9 +170,11 @@ fn run(args: CliArgs) -> Result<Option<String>, Box<dyn std::error::Error>> {
                         Err(_) => {}
                     }
 
+                    let second_factor = sets[0].get_property_2fa()?;
+
                     for dataset in sets {
                         let salt = shavee_core::logic::generate_salt();
-                        match args.second_factor.clone() {
+                        match second_factor.clone() {
                             #[cfg(feature = "yubikey")]
                             TwoFactorMode::Yubikey { yslot } => {
                                 dataset.clone().yubi_create(password, yslot, &salt)?;
@@ -244,69 +198,149 @@ fn run(args: CliArgs) -> Result<Option<String>, Box<dyn std::error::Error>> {
                             }
                         }
                         dataset.set_property_2fa(
-                            args.second_factor.clone(),
+                            second_factor.clone(),
                             &base64::Engine::encode(&shavee_core::logic::BASE64_ENGINE, salt),
                         )?;
+                    }
+                    exit_result = None;
+                }
+            }
+            Operations::Print => {
+                eprintln!("{}", shavee_core::UNREACHABLE_CODE);
+            }
+        },
+
+        OperationMode::Manual { operation } => {
+            match operation {
+                Operations::Create { datasets } => {
+                    // Ask and check for password a second time if input is stdin
+                    if atty::is(Stream::Stdin) {
+                        let binding = rpassword::prompt_password("Retype  Password: ")
+                            .map_err(|e| e.to_string())?;
+
+                        if password != binding.as_bytes() {
+                            return Err("Passwords do not match.".into());
+                        }
+                    };
+
+                    for dataset in datasets {
+                        shavee_core::trace(&format!(
+                            "\tCreate ZFS dataset: \"{}\" using \"{:?}\" method.",
+                            dataset.to_string(),
+                            args.second_factor
+                        ));
+
+                        let mut sets = vec![dataset.clone()];
+
+                        match dataset.list() {
+                            Ok(d) => {
+                                sets = d;
+                            }
+                            Err(_) => {}
+                        }
+
+                        for dataset in sets {
+                            let salt = shavee_core::logic::generate_salt();
+                            match args.second_factor.clone() {
+                                #[cfg(feature = "yubikey")]
+                                TwoFactorMode::Yubikey { yslot } => {
+                                    dataset.clone().yubi_create(password, yslot, &salt)?;
+                                }
+                                #[cfg(feature = "file")]
+                                TwoFactorMode::File {
+                                    ref file,
+                                    port,
+                                    size,
+                                } => {
+                                    let filehash = get_filehash(file.clone().as_str(), port, size)?;
+                                    dataset.clone().file_create(
+                                        password,
+                                        filehash.clone(),
+                                        &salt,
+                                    )?
+                                }
+                                TwoFactorMode::Password => {
+                                    let password_mode_hash =
+                                        shavee_core::logic::password_mode_hash(&password, &salt)?;
+                                    dataset.clone().create(&password_mode_hash)?;
+                                    // store generated random salt as base64 encoded in ZFS property
+                                }
+                            }
+                            dataset.set_property_2fa(
+                                args.second_factor.clone(),
+                                &base64::Engine::encode(&shavee_core::logic::BASE64_ENGINE, salt),
+                            )?;
+                        }
                     }
 
                     exit_result = None;
                 }
-                Operations::Mount { dataset, recursive } => {
-                    shavee_core::trace(&format!(
-                        "\tMount ZFS dataset: \"{}\".",
-                        dataset.to_string()
-                    ));
-                    let mut sets = vec![dataset.clone()];
-                    if recursive {
-                        sets = dataset.list()?;
-                    }
-                    for d in sets {
-                        let salt = shavee_core::logic::get_salt(Some(&d))?;
-                        match args.second_factor {
-                            #[cfg(feature = "yubikey")]
-                            TwoFactorMode::Yubikey { yslot } => {
-                                d.yubi_unlock(password, yslot, &salt)?
+                Operations::Mount {
+                    datasets,
+                    recursive,
+                } => {
+                    for dataset in datasets {
+                        shavee_core::trace(&format!(
+                            "\tMount ZFS dataset: \"{}\".",
+                            dataset.to_string()
+                        ));
+                        let mut sets = vec![dataset.clone()];
+                        if recursive {
+                            sets = dataset.list()?;
+                        }
+                        for d in sets {
+                            let salt = shavee_core::logic::get_salt(Some(&d))?;
+                            match args.second_factor {
+                                #[cfg(feature = "yubikey")]
+                                TwoFactorMode::Yubikey { yslot } => {
+                                    d.yubi_unlock(password, yslot, &salt)?
+                                }
+                                #[cfg(feature = "file")]
+                                TwoFactorMode::File {
+                                    ref file,
+                                    port,
+                                    size,
+                                } => {
+                                    let filehash = get_filehash(file.clone().as_str(), port, size)?;
+                                    d.file_unlock(password, filehash.clone(), &salt)?
+                                }
+                                TwoFactorMode::Password => d.pass_unlock(
+                                    shavee_core::logic::password_mode_hash(&password, &salt)?,
+                                )?,
                             }
-                            #[cfg(feature = "file")]
-                            TwoFactorMode::File {
-                                ref file,
-                                port,
-                                size,
-                            } => {
-                                let filehash = get_filehash(file.clone().as_str(), port, size)?;
-                                d.file_unlock(password, filehash.clone(), &salt)?
-                            }
-                            TwoFactorMode::Password => d.pass_unlock(
-                                shavee_core::logic::password_mode_hash(&password, &salt)?,
-                            )?,
                         }
                     }
 
                     exit_result = None;
                 }
                 Operations::PrintDataset {
-                    dataset,
+                    datasets,
                     recursive,
                     printwithname,
                 } => {
-                    shavee_core::trace(&format!(
-                        "\tPrint Secret key for \"{}\".",
-                        dataset.to_string()
-                    ));
-
-                    let mut sets = vec![dataset.clone()];
-                    if recursive {
-                        sets = dataset.list()?;
-                    }
-
                     let mut maxlength: usize = 0;
-                    if printwithname {
-                        for d in sets.clone() {
-                            let len = d.to_string().len();
-                            if len > maxlength {
-                                maxlength = len;
+                    let mut sets: Vec<Dataset> = Vec::new();
+
+                    for set in datasets {
+                        if recursive {
+                            let a = set.list()?;
+                            for d in a {
+                                sets.push(d.clone());
+                                let length = d.to_string().len();
+                                if maxlength <= length {
+                                    maxlength = length;
+                                }
+                            }
+                        } else {
+                            sets.push(set.clone());
+                            let length = set.to_string().len();
+                            if maxlength <= length {
+                                maxlength = length;
                             }
                         }
+                    }
+
+                    if printwithname {
                         println!("\x1b[1m{:<maxlength$}    {}\x1b[0m", "Dataset", "Key");
                         println!();
                     }
@@ -515,7 +549,7 @@ mod tests {
                 let create_password = CliArgs {
                     operation: OperationMode::Manual {
                         operation: Operations::Create {
-                            dataset: zfs_encrypted_dataset.clone(),
+                            datasets: vec![zfs_encrypted_dataset.clone()],
                         },
                     },
                     second_factor: TwoFactorMode::Password,
@@ -567,7 +601,7 @@ mod tests {
                 let mount_password = CliArgs {
                     operation: OperationMode::Manual {
                         operation: Operations::Mount {
-                            dataset: zfs_encrypted_dataset.clone(),
+                            datasets: vec![zfs_encrypted_dataset.clone()],
                             recursive: false,
                         },
                     },
@@ -679,7 +713,7 @@ mod tests {
                 let create_file = CliArgs {
                     operation: OperationMode::Manual {
                         operation: Operations::Create {
-                            dataset: zfs_encrypted_dataset.clone(),
+                            datasets: vec![zfs_encrypted_dataset.clone()],
                         },
                     },
                     second_factor: TwoFactorMode::File {
@@ -727,7 +761,7 @@ mod tests {
                 let mount_file = CliArgs {
                     operation: OperationMode::Manual {
                         operation: Operations::Mount {
-                            dataset: zfs_encrypted_dataset.clone(),
+                            datasets: vec![zfs_encrypted_dataset.clone()],
                             recursive: false,
                         },
                     },

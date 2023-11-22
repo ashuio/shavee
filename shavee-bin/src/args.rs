@@ -6,8 +6,9 @@ use clap::{crate_authors, crate_description, crate_name, crate_version, Arg, Arg
 use shavee_core::structs::TwoFactorMode;
 use shavee_core::zfs::Dataset;
 
-// CLAP Args
+// CLAP Args Validation
 const YUBI_SLOTS: [&str; 2] = ["1", "2"];
+// CLAP ENV Args
 const SHAVEE_CREATE: &str = "SHAVEE_CREATE";
 const SHAVEE_YUBIKEY: &str = "SHAVEE_YUBIKEY";
 const SHAVEE_MODE_PRINT: &str = "SHAVEE_MODE_PRINT";
@@ -23,14 +24,14 @@ const SHAVEE_FILE_PORT: &str = "SHAVEE_FILE_PORT";
 #[derive(Debug, Clone, PartialEq)]
 pub enum Operations {
     Create {
-        dataset: Dataset,
+        datasets: Vec<Dataset>,
     },
     Mount {
-        dataset: Dataset,
+        datasets: Vec<Dataset>,
         recursive: bool,
     },
     PrintDataset {
-        dataset: Dataset,
+        datasets: Vec<Dataset>,
         recursive: bool,
         printwithname: bool,
     },
@@ -84,7 +85,7 @@ impl CliArgs {
                 Arg::new("zset")
                     .short('z')
                     .env(SHAVEE_ZFS_DATASET)
-                    .num_args(1)
+                    .num_args(1..)
                     .long("zset")
                     .value_name("ZFS dataset")
                     .required(false)
@@ -220,18 +221,25 @@ impl CliArgs {
 
         // if zset arg is entered, then its value will be used
         // NOTE: validating dataset is done by zfs module
+        let mut datasets: Vec<Dataset> = Vec::new();
 
-        let datasetvalue: Option<&String> = arg.get_one("zset");
-        let dataset = match datasetvalue {
-            Some(d) => {
-                let mut d = d.to_owned();
-                if d.ends_with("/") {
-                    d.pop();
-                };
-                Some(d.to_owned())
-            }
-            None => None,
-        };
+        if cmdpresent(&arg, "zset") {
+            let datasetvalue = arg.get_many::<String>("zset");
+            match datasetvalue {
+                Some(d) => {
+                    let sets: Vec<&String> = d.collect();
+                    for i in sets {
+                        let mut d = i.to_owned();
+                        if d.ends_with("/") {
+                            d.pop();
+                        };
+                        let d = Dataset::new(d)?;
+                        datasets.push(d);
+                    }
+                }
+                None => {}
+            };
+        }
 
         // The port arguments are <u16> or None (not entered by user)
         #[cfg(feature = "file")]
@@ -258,23 +266,20 @@ impl CliArgs {
         let yslot: u8 = yslot.parse::<u8>().expect("Invalid Port!");
 
         let operation = if cmdpresent(&arg, "create") {
-            let dataset = Dataset::new(dataset.expect(shavee_core::UNREACHABLE_CODE))?;
-            Operations::Create { dataset }
+            Operations::Create { datasets }
         } else if cmdpresent(&arg, "mount") {
-            let dataset = Dataset::new(dataset.expect(shavee_core::UNREACHABLE_CODE))?;
             if cmdpresent(&arg, "recursive") {
                 Operations::Mount {
-                    dataset: dataset,
+                    datasets,
                     recursive: true,
                 }
             } else {
                 Operations::Mount {
-                    dataset: dataset,
+                    datasets,
                     recursive: false,
                 }
             }
         } else if cmdpresent(&arg, "print") {
-            let dataset = Dataset::new(dataset.expect(shavee_core::UNREACHABLE_CODE))?;
             let mut recursive = false;
             let mut printwithname = false;
             if cmdpresent(&arg, "recursive") {
@@ -284,7 +289,7 @@ impl CliArgs {
                 printwithname = true;
             }
             Operations::PrintDataset {
-                dataset: dataset,
+                datasets,
                 recursive: recursive,
                 printwithname: printwithname,
             }
@@ -388,7 +393,7 @@ mod tests {
                 result: CliArgs {
                     operation: OperationMode::Manual {
                         operation: Operations::Mount {
-                            dataset: Dataset::new("zroot/test".to_string()).unwrap(),
+                            datasets: vec![Dataset::new("zroot/test".to_string()).unwrap()],
                             recursive: false,
                         },
                     },
@@ -400,7 +405,7 @@ mod tests {
                 result: CliArgs {
                     operation: OperationMode::Manual {
                         operation: Operations::Create {
-                            dataset: Dataset::new("zroot/test".to_string()).unwrap(),
+                            datasets: vec![Dataset::new("zroot/test".to_string()).unwrap()],
                         },
                     },
                     second_factor: TwoFactorMode::Password,
@@ -411,7 +416,7 @@ mod tests {
                 result: CliArgs {
                     operation: OperationMode::Manual {
                         operation: Operations::Create {
-                            dataset: Dataset::new("zroot/test".to_string()).unwrap(),
+                            datasets: vec![Dataset::new("zroot/test".to_string()).unwrap()],
                         },
                     },
                     second_factor: TwoFactorMode::Password,
@@ -423,7 +428,7 @@ mod tests {
                 result: CliArgs {
                     operation: OperationMode::Manual {
                         operation: Operations::Create {
-                            dataset: Dataset::new("zroot/test".to_string()).unwrap(),
+                            datasets: vec![Dataset::new("zroot/test".to_string()).unwrap()],
                         },
                     },
                     second_factor: TwoFactorMode::Yubikey { yslot: 1 },
@@ -537,7 +542,7 @@ mod tests {
                 result: CliArgs {
                     operation: OperationMode::Manual {
                         operation: Operations::Mount {
-                            dataset: Dataset::new("zroot/test".to_string()).unwrap(),
+                            datasets: vec![Dataset::new("zroot/test".to_string()).unwrap()],
                             recursive: false,
                         },
                     },

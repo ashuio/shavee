@@ -1,6 +1,6 @@
 [package]
 name = "shavee"
-version = "0.7.2"
+version = "0.7.3"
 authors = ["Ashutosh Verma <shavee@ashu.io>"]
 edition = "2021"
 license = "MIT"
