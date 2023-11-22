@@ -104,7 +104,7 @@ Flags/Options
 * `-m` : Unlocks and Mounts the ZFS Dataset.
 * `-r` : Perform Operations Recursively to all child datasets.
 * `-a` : Automatically Detect Dataset Unlock Properties ( can only be used with `Print` and `Mount` )
-* `-z` : ZFS Dataset to operate on. ( Will automatically append username in PAM module )
+* `-z` : ZFS Dataset(s) to operate on. ( can take multiple options )
 
 **NOTE: The `-y` (Yubikey mode) flag and the `-f <path to file>` (File mode) option are interchangeable.**
 
@@ -127,12 +127,12 @@ shavee -c -z <zfs dataset path>
 **Example**
 
 ```bash
-shavee -y -c -z zroot/data/home/hunter
+shavee -y -c -z zroot/data/home/hunter zroot/data/home/hunter2
 ```
 
-Here we use Yubikey as our second factor. (Can be omitted for password only auth)
+Here we use Yubikey as our second factor. (Can be omitted for password only auth) and operate on TWO datasets together.
 
-**Note: Encryption must already be enabled and the key loaded to change key of an exisiting dataset.**
+**Note: Encryption must already be enabled and the key loaded to change key of an exisiting dataset if not created with shavee.**
 
 **Create a new dataset**
 
@@ -152,7 +152,7 @@ Here we use a FILE for our second factor (Can be omitted for password auth only)
 
 ## Use shavee to unlock and mount any zfs patition
 
-Simply use the option `-z` to unlock any zfs dataset
+Simply use the option `-m` to unlock any zfs dataset
 
 **Example**
 
@@ -232,10 +232,11 @@ auth    optional    libshavee_pam.so zroot/data/home
 ``` 
 Where `zroot/data/home` mounts to `/home`
 
-NOTE: PAM module unlocks and mounts datasets recursively, any failure in any dataset will result in Failed Auth.
+NOTE: PAM module unlocks and mounts datasets recursively, any failure in any dataset will result in Failed Auth. This shold not stop you from logging in if PAM module is set to `optional` like we did in the Example.
+
+To Force fail auth on dataset mount failure change it from `optional` to `required`
 
  
-
 ## Dual home directories in ZFS
 Since ZFS mounts datasets OVER preexisting directories and we defined our module in PAM as optional we still get authenticated with JUST the pass even though our dataset is NOT decrypted (eg. Because Yubikey was not inserted).
 
