@@ -21,6 +21,8 @@ clap = { version = "4", features = ["cargo"] }
 rand = "0.8.5"
 log = { version = "0.4.20", optional = true }
 env_logger = { version = "0.10.1", optional = true }
+strum = "0.25.0"
+strum_macros = "0.25.3"
 
 
 [dev-dependencies]

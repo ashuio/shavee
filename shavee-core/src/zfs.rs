@@ -1,35 +1,34 @@
+use clap::crate_version;
 use std::io::prelude::*;
 use std::process::Command;
-use std::u64;
-
-use clap::crate_version;
+use strum::IntoEnumIterator;
+use strum_macros::{Display, EnumIter};
 
 use crate::structs::TwoFactorMode;
 use crate::UNREACHABLE_CODE;
 
-/// ZFS property used to store the random salt
-pub const ZFS_PROPERTY_SALT: &str = "com.github.shavee:salt";
-pub const ZFS_PROPERTY_VERSION: &str = "com.github.shavee:version";
-pub const ZFS_PROPERTY_YUBI_SLOT: &str = "com.github.shavee:yubislot";
-pub const ZFS_PROPERTY_FILE_PATH: &str = "com.github.shavee:filepath";
-pub const ZFS_PROPERTY_FILE_PORT: &str = "com.github.shavee:fileport";
-pub const ZFS_PROPERTY_FILE_SIZE: &str = "com.github.shavee:filesize";
-pub const ZFS_PROPERTY_SECOND_FACTOR: &str = "com.github.shavee:secondfactor";
-
-#[derive(Debug, Clone, PartialEq)]
+/// ZFS Properties used to store config
+#[derive(Debug, Clone, PartialEq, Copy, EnumIter, Display)]
 pub enum ZfsShaveeProperties {
+    #[strum(serialize = "com.github.shavee:salt")]
     Salt,
+    #[strum(serialize = "com.github.shavee:secondfactor")]
     SecondFactor,
+    #[strum(serialize = "com.github.shavee:yubislot")]
     YubikeySlot,
+    #[strum(serialize = "com.github.shavee:filepath")]
     FilePath,
+    #[strum(serialize = "com.github.shavee:fileport")]
     FilePort,
+    #[strum(serialize = "com.github.shavee:filesize")]
     FileSize,
+    #[strum(serialize = "com.github.shavee:version")]
     Version,
 }
 
-// ZFS Error Messages
+// ZFS Error Messages to ignore
 const ZFS_ERROR_ALREADY_MOUNTED: &str = "filesystem already mounted";
-const ZFS_ERROR_KEY_ALREADY_LOADED: &str = "Key load error: Key already loaded";
+const ZFS_ERROR_KEY_ALREADY_LOADED: &str = "Key already loaded";
 
 pub struct DatasetProperty {
     property: ZfsShaveeProperties,
@@ -139,15 +138,7 @@ impl Dataset {
     }
 
     pub fn get_property_2fa(&self) -> Result<TwoFactorMode, std::io::Error> {
-        let prop_build: Vec<ZfsShaveeProperties> = vec![
-            ZfsShaveeProperties::FilePath,
-            ZfsShaveeProperties::FilePort,
-            ZfsShaveeProperties::FileSize,
-            ZfsShaveeProperties::SecondFactor,
-            ZfsShaveeProperties::YubikeySlot,
-            ZfsShaveeProperties::Version,
-            ZfsShaveeProperties::Salt,
-        ];
+        let prop_build: Vec<ZfsShaveeProperties> = ZfsShaveeProperties::iter().collect();
         let input = self.get_properties(prop_build)?;
 
         let mut filepath = String::new();
@@ -450,17 +441,7 @@ impl Dataset {
         let input = dataset_property.clone();
 
         for i in input {
-            match i {
-                ZfsShaveeProperties::FilePath => cmd.push(ZFS_PROPERTY_FILE_PATH.to_string()),
-                ZfsShaveeProperties::FilePort => cmd.push(ZFS_PROPERTY_FILE_PORT.to_string()),
-                ZfsShaveeProperties::FileSize => cmd.push(ZFS_PROPERTY_FILE_SIZE.to_string()),
-                ZfsShaveeProperties::Salt => cmd.push(ZFS_PROPERTY_SALT.to_string()),
-                ZfsShaveeProperties::SecondFactor => {
-                    cmd.push(ZFS_PROPERTY_SECOND_FACTOR.to_string())
-                }
-                ZfsShaveeProperties::Version => cmd.push(ZFS_PROPERTY_VERSION.to_string()),
-                ZfsShaveeProperties::YubikeySlot => cmd.push(ZFS_PROPERTY_YUBI_SLOT.to_string()),
-            }
+            cmd.push(i.to_string());
         }
 
         let input = cmd.join(",");
@@ -529,52 +510,29 @@ impl Dataset {
         let mut command: Vec<String> = Vec::new();
 
         for i in properties {
-            match i.property {
-                ZfsShaveeProperties::FilePath => match i.value {
-                    Some(s) => command.push(format!("{}={}", ZFS_PROPERTY_FILE_PATH, s)),
-                    None => {}
-                },
-                ZfsShaveeProperties::FilePort => match i.value {
-                    Some(s) => command.push(format!("{}={}", ZFS_PROPERTY_FILE_PORT, s)),
-                    None => {}
-                },
-                ZfsShaveeProperties::FileSize => match i.value {
-                    Some(s) => command.push(format!("{}={}", ZFS_PROPERTY_FILE_SIZE, s)),
-                    None => {}
-                },
-                ZfsShaveeProperties::Salt => match i.value {
-                    Some(s) => command.push(format!("{}={}", ZFS_PROPERTY_SALT, s)),
-                    None => {}
-                },
-                ZfsShaveeProperties::SecondFactor => match i.value {
-                    Some(s) => command.push(format!("{}={}", ZFS_PROPERTY_SECOND_FACTOR, s)),
-                    None => {}
-                },
-                ZfsShaveeProperties::YubikeySlot => match i.value {
-                    Some(s) => command.push(format!("{}={}", ZFS_PROPERTY_YUBI_SLOT, s)),
-                    None => {}
-                },
-                ZfsShaveeProperties::Version => {
-                    command.push(format!("{}={}", ZFS_PROPERTY_FILE_PORT, crate_version!()));
+            match i.value {
+                Some(s) => {
+                    command.push(format!("{}={}", i.property.to_string(), s));
                 }
+                None => {}
             }
         }
 
-        let cmd = command.join(" ");
+        let mut zfs_set_property = Command::new("zfs");
+        zfs_set_property.arg("set");
+        for c in command {
+            zfs_set_property.arg(c);
+        }
 
-        let zfs_set_property = Command::new("zfs")
-            .arg("set")
-            .arg(cmd)
-            .arg(&self.dataset)
-            .output()?;
+        let result = zfs_set_property.arg(&self.dataset).output()?;
 
-        if !zfs_set_property.status.success() {
+        if !result.status.success() {
             crate::error("Command failed!");
             return Err(std::io::Error::new(
                 // error kind is not known
                 std::io::ErrorKind::Other,
                 //stderr used to generate the error message.
-                String::from_utf8_lossy(&zfs_set_property.stderr).to_string(),
+                String::from_utf8_lossy(&result.stderr).to_string(),
             ));
         }
         Ok(())
