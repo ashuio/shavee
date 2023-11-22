@@ -325,23 +325,14 @@ impl CliArgs {
             }
         };
 
-        // if file feature is enabled, check for file 2FA mode
+        #[cfg(feature = "file")]
         if cmdpresent(&arg, "keyfile") {
-            if !cfg!(feature = "file") {
-                return Err(clap::Error::raw(
-                    clap::error::ErrorKind::MissingRequiredArgument,
-                    "File 2FA feature is disabled at compile.",
-                ));
-            }
-            #[cfg(feature = "file")]
-            {
                 let file = file.expect(shavee_core::UNREACHABLE_CODE);
                 if file.starts_with(".") {
                     eprintln!("File PATH must be absolute eg. \"/mnt/a/test.jpg\"");
                     return Err(clap::Error::new(clap::error::ErrorKind::ValueValidation));
                 }
                 second_factor = TwoFactorMode::File { file, port, size };
-            }
         };
 
         Ok(CliArgs {
