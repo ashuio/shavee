@@ -79,59 +79,66 @@ impl Dataset {
         salt: &str,
     ) -> Result<(), std::io::Error> {
         let mut properties: Vec<DatasetProperty> = Vec::new();
-        properties.push(DatasetProperty {
-            property: ZfsShaveeProperties::Salt,
-            value: Some(salt.to_string()),
-        });
+        let prop_build: Vec<ZfsShaveeProperties> = ZfsShaveeProperties::iter().collect();
 
-        match args {
-            crate::structs::TwoFactorMode::Yubikey { yslot } => {
-                properties.push(DatasetProperty {
-                    property: ZfsShaveeProperties::SecondFactor,
-                    value: Some("Yubikey".to_string()),
-                });
-                properties.push(DatasetProperty {
-                    property: ZfsShaveeProperties::YubikeySlot,
-                    value: Some(yslot.to_string()),
-                });
-            }
-            crate::structs::TwoFactorMode::Password => {
-                properties.push(DatasetProperty {
-                    property: ZfsShaveeProperties::SecondFactor,
-                    value: Some("Password".to_string()),
-                });
-            }
-            crate::structs::TwoFactorMode::File { file, port, size } => {
-                properties.push(DatasetProperty {
-                    property: ZfsShaveeProperties::SecondFactor,
-                    value: Some("File".to_string()),
-                });
-                properties.push(DatasetProperty {
-                    property: ZfsShaveeProperties::FilePath,
-                    value: Some(file),
-                });
+        let mut filepath = String::from("-");
+        let mut fileport = String::from("-");
+        let mut filesize = String::from("-");
+        let mut yubislot = String::from("-");
 
+        let secondfactor = match args {
+            TwoFactorMode::Yubikey { yslot } => {
+                yubislot = String::from(yslot.to_string());
+                String::from("Yubikey")
+            }
+            TwoFactorMode::File { file, port, size } => {
+                filepath = file;
                 match port {
-                    Some(p) => properties.push(DatasetProperty {
-                        property: ZfsShaveeProperties::FilePort,
-                        value: Some(p.to_string()),
-                    }),
+                    Some(s) => fileport = s.to_string(),
                     None => {}
                 }
-
                 match size {
-                    Some(s) => properties.push(DatasetProperty {
-                        property: ZfsShaveeProperties::FileSize,
-                        value: Some(s.to_string()),
-                    }),
+                    Some(s) => filesize = s.to_string(),
                     None => {}
                 }
+                String::from("File")
+            }
+            TwoFactorMode::Password => String::from("Password"),
+        };
+
+        for p in prop_build {
+            match p {
+                ZfsShaveeProperties::Salt => properties.push(DatasetProperty {
+                    property: p,
+                    value: Some(salt.to_string()),
+                }),
+                ZfsShaveeProperties::SecondFactor => properties.push(DatasetProperty {
+                    property: p,
+                    value: Some(secondfactor.to_string()),
+                }),
+                ZfsShaveeProperties::YubikeySlot => properties.push(DatasetProperty {
+                    property: p,
+                    value: Some(yubislot.to_string()),
+                }),
+                ZfsShaveeProperties::FilePath => properties.push(DatasetProperty {
+                    property: p,
+                    value: Some(filepath.to_string()),
+                }),
+                ZfsShaveeProperties::FilePort => properties.push(DatasetProperty {
+                    property: p,
+                    value: Some(fileport.to_string()),
+                }),
+                ZfsShaveeProperties::FileSize => properties.push(DatasetProperty {
+                    property: p,
+                    value: Some(filesize.to_string()),
+                }),
+                ZfsShaveeProperties::Version => properties.push(DatasetProperty {
+                    property: p,
+                    value: Some(crate_version!().to_string()),
+                }),
             }
         }
-        properties.push(DatasetProperty {
-            property: ZfsShaveeProperties::Version,
-            value: Some(crate_version!().to_string()),
-        });
+
         self.set_properties(properties)?;
 
         Ok(())
