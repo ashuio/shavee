@@ -156,6 +156,7 @@ impl CliArgs {
                     .env(SHAVEE_AUTO_DETECT)
                     .long("auto")
                     .help("Try to automatically guess the unlock config for a dataset")
+                    .conflicts_with("create")
                     .required(false)
                     .requires("zset")
                     .num_args(0)
@@ -173,7 +174,7 @@ impl CliArgs {
                     .requires("recursivegroup")
             )
             .group(clap::ArgGroup::new("recursivegroup")
-            .args(&["mount", "print","create"])
+            .args(&["mount", "print"])
             .multiple(false))
             .arg(
                 Arg::new("keyfile")

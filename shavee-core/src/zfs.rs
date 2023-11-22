@@ -627,6 +627,18 @@ impl Dataset {
     }
 }
 
+pub fn resolve_recursive(datasets: Vec<Dataset>) -> Result<Vec<Dataset>, std::io::Error> {
+    let mut sets: Vec<Dataset> = Vec::new();
+
+    for set in datasets {
+        let a = set.list()?;
+        for d in a {
+            sets.push(d.clone());
+        }
+    }
+    Ok(sets)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
