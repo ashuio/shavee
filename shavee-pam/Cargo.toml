@@ -2,7 +2,7 @@
 name = "shavee_pam"
 authors = ["Ashutosh Verma <shavee@ashu.io>"]
 version = "0.7.2"
-edition = "2018"
+edition = "2021"
 license = "MIT"
 
 [lib]
