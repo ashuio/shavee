@@ -14,12 +14,16 @@ pub enum ZfsShaveeProperties {
     Salt,
     #[strum(serialize = "com.github.shavee:secondfactor")]
     SecondFactor,
+    #[cfg(feature = "yubikey")]
     #[strum(serialize = "com.github.shavee:yubislot")]
     YubikeySlot,
+    #[cfg(feature = "file")]
     #[strum(serialize = "com.github.shavee:filepath")]
     FilePath,
+    #[cfg(feature = "file")]
     #[strum(serialize = "com.github.shavee:fileport")]
     FilePort,
+    #[cfg(feature = "file")]
     #[strum(serialize = "com.github.shavee:filesize")]
     FileSize,
     #[strum(serialize = "com.github.shavee:version")]
@@ -81,16 +85,22 @@ impl Dataset {
         let mut properties: Vec<DatasetProperty> = Vec::new();
         let prop_build: Vec<ZfsShaveeProperties> = ZfsShaveeProperties::iter().collect();
 
+        #[cfg(feature = "file")]
         let mut filepath = String::from("-");
+        #[cfg(feature = "file")]
         let mut fileport = String::from("-");
+        #[cfg(feature = "file")]
         let mut filesize = String::from("-");
+        #[cfg(feature = "yubikey")]
         let mut yubislot = String::from("-");
 
         let secondfactor = match args {
+            #[cfg(feature = "yubikey")]
             TwoFactorMode::Yubikey { yslot } => {
                 yubislot = String::from(yslot.to_string());
                 String::from("Yubikey")
             }
+            #[cfg(feature = "file")]
             TwoFactorMode::File { file, port, size } => {
                 filepath = file;
                 match port {
@@ -116,18 +126,22 @@ impl Dataset {
                     property: p,
                     value: Some(secondfactor.to_string()),
                 }),
+                #[cfg(feature = "yubikey")]
                 ZfsShaveeProperties::YubikeySlot => properties.push(DatasetProperty {
                     property: p,
                     value: Some(yubislot.to_string()),
                 }),
+                #[cfg(feature = "file")]
                 ZfsShaveeProperties::FilePath => properties.push(DatasetProperty {
                     property: p,
                     value: Some(filepath.to_string()),
                 }),
+                #[cfg(feature = "file")]
                 ZfsShaveeProperties::FilePort => properties.push(DatasetProperty {
                     property: p,
                     value: Some(fileport.to_string()),
                 }),
+                #[cfg(feature = "file")]
                 ZfsShaveeProperties::FileSize => properties.push(DatasetProperty {
                     property: p,
                     value: Some(filesize.to_string()),
@@ -148,21 +162,28 @@ impl Dataset {
         let prop_build: Vec<ZfsShaveeProperties> = ZfsShaveeProperties::iter().collect();
         let input = self.get_properties(prop_build)?;
 
+        #[cfg(feature = "file")]
         let mut filepath = String::new();
+        #[cfg(feature = "file")]
         let mut fileport = String::new();
+        #[cfg(feature = "file")]
         let mut filesize = String::new();
         let mut secondfactor = String::new();
+        #[cfg(feature = "yubikey")]
         let mut yubislot = String::new();
 
         for i in input {
             match i.value {
                 Some(s) => match i.property {
+                    #[cfg(feature = "file")]
                     ZfsShaveeProperties::FilePath => {
                         filepath = s;
                     }
+                    #[cfg(feature = "file")]
                     ZfsShaveeProperties::FilePort => {
                         fileport = s;
                     }
+                    #[cfg(feature = "file")]
                     ZfsShaveeProperties::FileSize => {
                         filesize = s;
                     }
@@ -171,6 +192,7 @@ impl Dataset {
                         secondfactor = s;
                     }
                     ZfsShaveeProperties::Version => {}
+                    #[cfg(feature = "yubikey")]
                     ZfsShaveeProperties::YubikeySlot => {
                         yubislot = s;
                     }
@@ -180,28 +202,49 @@ impl Dataset {
         }
 
         if secondfactor.as_str() == "Yubikey" {
-            let result = TwoFactorMode::Yubikey {
+            #[allow(unused_variables)]
+            let result: Result<TwoFactorMode, std::io::Error> = Err(std::io::Error::new(
+                std::io::ErrorKind::InvalidInput,
+                "Check Compiled Features",
+            ));
+
+            #[cfg(feature = "yubikey")]
+            let out = TwoFactorMode::Yubikey {
                 yslot: yubislot.parse::<u8>().expect("Invalid Yubikey Slot"),
             };
-            return Ok(result);
+            #[cfg(feature = "yubikey")]
+            let result = Ok(out);
+            return result;
         } else if secondfactor.as_str() == "File" {
+            #[cfg(feature = "file")]
             let mut port = None;
+            #[cfg(feature = "file")]
             let mut size = None;
 
+            #[cfg(feature = "file")]
             if !fileport.is_empty() {
                 port = Some(fileport.parse::<u16>().expect("Invalid Port"));
             }
 
+            #[cfg(feature = "file")]
             if !filesize.is_empty() {
                 size = Some(filesize.parse::<u64>().expect("Invalid File Size"));
             }
 
-            let result = TwoFactorMode::File {
+            #[allow(unused_variables)]
+            let result: Result<TwoFactorMode, std::io::Error> = Err(std::io::Error::new(
+                std::io::ErrorKind::InvalidInput,
+                "Check enabled features",
+            ));
+
+            #[cfg(feature = "file")]
+            let result = Ok(TwoFactorMode::File {
                 file: filepath,
                 port: port,
                 size: size,
-            };
-            return Ok(result);
+            });
+
+            return result;
         } else if secondfactor.as_str() == "Password" {
             return Ok(TwoFactorMode::Password);
         } else {

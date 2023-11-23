@@ -1,7 +1,9 @@
 mod args;
 use args::*;
 use atty::Stream;
-use shavee_core::{filehash::get_filehash, structs::TwoFactorMode, zfs::resolve_recursive};
+#[cfg(feature = "file")]
+use shavee_core::filehash::get_filehash;
+use shavee_core::{structs::TwoFactorMode, zfs::resolve_recursive};
 use std::io::stdin;
 
 /// main() collect the arguments from command line, pass them to run() and print any

@@ -3,7 +3,8 @@ extern crate pamsm;
 
 use pamsm::{Pam, PamError, PamFlags, PamLibExt, PamServiceModule};
 #[cfg(feature = "file")]
-use shavee_core::{filehash, logic, zfs::Dataset};
+use shavee_core::filehash;
+use shavee_core::{logic, zfs::Dataset};
 struct PamShavee;
 
 // TODO: Need unit tests implemented for the PAM module functions
@@ -87,73 +88,69 @@ impl PamServiceModule for PamShavee {
             }
         };
 
-       let datasets = match dataset.list(){
+        let datasets = match dataset.list() {
             Ok(d) => d,
             Err(_) => {
                 eprintln!("Unable to list ZFS Datasets");
-                return PamError::BAD_ITEM
-            }
-        };
-
-        for d in datasets {
-
-        let umode = match d.get_property_2fa() {
-            Ok(k) => k,
-            Err(e) => {
-                eprintln!("Error Getting Dataset Properties: {}", e);
                 return PamError::BAD_ITEM;
             }
         };
 
+        for d in datasets {
+            let umode = match d.get_property_2fa() {
+                Ok(k) => k,
+                Err(e) => {
+                    eprintln!("Error Getting Dataset Properties: {}", e);
+                    return PamError::BAD_ITEM;
+                }
+            };
 
-        let salt = match logic::get_salt(Some(&d)) {
-            Ok(salt) => salt,
-            Err(error) => {
-                eprintln!("Error in determining salt: {}", error.to_string());
-                return PamError::INCOMPLETE;
-            }
-        };
-        let password: &[u8] = &pass.clone().into_bytes();
-        let result = match umode {
-            #[cfg(feature = "yubikey")]
-            shavee_core::structs::TwoFactorMode::Yubikey { yslot } => {
-                d.yubi_unlock(password, yslot, &salt)
-            }
+            let salt = match logic::get_salt(Some(&d)) {
+                Ok(salt) => salt,
+                Err(error) => {
+                    eprintln!("Error in determining salt: {}", error.to_string());
+                    return PamError::INCOMPLETE;
+                }
+            };
+            let password: &[u8] = &pass.clone().into_bytes();
+            let result = match umode {
+                #[cfg(feature = "yubikey")]
+                shavee_core::structs::TwoFactorMode::Yubikey { yslot } => {
+                    d.yubi_unlock(password, yslot, &salt)
+                }
 
-            #[cfg(feature = "file")]
-            shavee_core::structs::TwoFactorMode::File { file, port, size } => {
-                let filehash = match filehash::get_filehash(&file, port, size) {
-                    Ok(hash) => hash,
-                    Err(error) => {
-                        eprintln!("Error in generating filehash: {}", error.to_string());
-                        return PamError::AUTHINFO_UNAVAIL;
-                    }
-                };
-                d.file_unlock(password, filehash, &salt)
-            }
+                #[cfg(feature = "file")]
+                shavee_core::structs::TwoFactorMode::File { file, port, size } => {
+                    let filehash = match filehash::get_filehash(&file, port, size) {
+                        Ok(hash) => hash,
+                        Err(error) => {
+                            eprintln!("Error in generating filehash: {}", error.to_string());
+                            return PamError::AUTHINFO_UNAVAIL;
+                        }
+                    };
+                    d.file_unlock(password, filehash, &salt)
+                }
 
-            shavee_core::structs::TwoFactorMode::Password => {
-                let key = match logic::password_mode_hash(password, &salt) {
-                    Ok(key) => key,
-                    Err(error) => {
-                        eprintln!("Error in generating password hash: {}", error.to_string());
-                        return PamError::AUTHINFO_UNAVAIL;
-                    }
-                };
-                d.pass_unlock(key)
-            }
-        };
-    
+                shavee_core::structs::TwoFactorMode::Password => {
+                    let key = match logic::password_mode_hash(password, &salt) {
+                        Ok(key) => key,
+                        Err(error) => {
+                            eprintln!("Error in generating password hash: {}", error.to_string());
+                            return PamError::AUTHINFO_UNAVAIL;
+                        }
+                    };
+                    d.pass_unlock(key)
+                }
+            };
 
-        match result {
-            Ok(_) => {},
-            Err(e) => {
-                eprintln!("Error in mounting user ZFS dataset: {}", e.to_string());
+            match result {
+                Ok(_) => {}
+                Err(e) => {
+                    eprintln!("Error in mounting user ZFS dataset: {}", e.to_string());
+                }
             }
         }
-
-    }
-    PamError::SUCCESS
+        PamError::SUCCESS
     }
 
     fn setcred(_: Pam, _: PamFlags, _: Vec<String>) -> PamError {

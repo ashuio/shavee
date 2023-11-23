@@ -1,13 +1,19 @@
 [package]
 name = "shavee_core"
-version = "0.7.3"
-edition = "2021"
+version.workspace = true
+authors.workspace = true
+description.workspace = true
+documentation.workspace = true
+edition.workspace = true
+license.workspace = true
+homepage.workspace = true
+readme.workspace = true
 
 
 [features]
 # default = ["trace"]
 trace = ["dep:env_logger", "dep:log"]
-default = ["file", "yubikey"] # select the features to be included in the binary
+default = ["file","yubikey"] # select the features to be included in the binary
 yubikey = []                  # Yubikey feature
 file = []   
 

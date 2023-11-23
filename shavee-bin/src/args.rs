@@ -212,6 +212,7 @@ impl CliArgs {
         // otherwise fill them with None
         #[cfg(feature = "file")]
         let fileargs = arg.get_many("keyfile");
+        #[cfg(feature = "file")]
         let (file, size) = match fileargs {
             Some(s) => {
                 let a: Vec<&String> = s.collect();
@@ -245,6 +246,7 @@ impl CliArgs {
         // The port arguments are <u16> or None (not entered by user)
         #[cfg(feature = "file")]
         let port: Option<&u16> = arg.get_one("port");
+        #[cfg(feature = "file")]
         let port = match port {
             Some(p) => {
                 let mut p = Some(p.to_owned());
@@ -260,10 +262,12 @@ impl CliArgs {
         // Default value if not entered is 2
         #[cfg(feature = "yubikey")]
         let yslot: Option<&String> = arg.get_one("slot");
+        #[cfg(feature = "yubikey")]
         let yslot = match yslot {
             Some(s) => s.to_owned(),
             None => 2.to_string(),
         };
+        #[cfg(feature = "yubikey")]
         let yslot: u8 = yslot.parse::<u8>().expect("Invalid Port!");
 
         let operation = if cmdpresent(&arg, "create") {
@@ -327,12 +331,12 @@ impl CliArgs {
 
         #[cfg(feature = "file")]
         if cmdpresent(&arg, "keyfile") {
-                let file = file.expect(shavee_core::UNREACHABLE_CODE);
-                if file.starts_with(".") {
-                    eprintln!("File PATH must be absolute eg. \"/mnt/a/test.jpg\"");
-                    return Err(clap::Error::new(clap::error::ErrorKind::ValueValidation));
-                }
-                second_factor = TwoFactorMode::File { file, port, size };
+            let file = file.expect(shavee_core::UNREACHABLE_CODE);
+            if file.starts_with(".") {
+                eprintln!("File PATH must be absolute eg. \"/mnt/a/test.jpg\"");
+                return Err(clap::Error::new(clap::error::ErrorKind::ValueValidation));
+            }
+            second_factor = TwoFactorMode::File { file, port, size };
         };
 
         Ok(CliArgs {

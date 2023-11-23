@@ -1,22 +1,22 @@
 [package]
 name = "shavee"
-version = "0.7.3"
-authors = ["Ashutosh Verma <shavee@ashu.io>"]
-edition = "2021"
-license = "MIT"
-description = "shavee is a program to automatically decrypt and mount ZFS datasets using Yubikey HMAC as 2FA or any USB drive with support for PAM to auto mount home directories."
-homepage = "https://shavee.ashu.io"
-documentation = "https://shavee.ashu.io"
-readme = "README.md"
-repository = "https://github.com/ashuio/shavee"
+version.workspace = true
+authors.workspace = true
+description.workspace = true
+documentation.workspace = true
+edition.workspace = true
+license.workspace = true
+homepage.workspace = true
+readme.workspace = true
+
 
 [features]
-default = ["file", "yubikey"] # select the features to be included in the binary
+default = ["file","yubikey"] # select the features to be included in the binary
 yubikey = []                  # Yubikey feature
 file = []                     # File 2FA feature
 
 [dependencies]
-shavee_core = { path = "../shavee-core" }
+shavee_core = { package = "shavee_core", path = "../shavee-core", version = "0.7.3"}
 sha2 = "0.10.8"
 rpassword = "7.3.1"
 base64 = "0.21.5"

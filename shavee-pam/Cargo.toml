@@ -1,19 +1,23 @@
 [package]
 name = "shavee_pam"
-authors = ["Ashutosh Verma <shavee@ashu.io>"]
-version = "0.7.3"
-edition = "2021"
-license = "MIT"
+version.workspace = true
+authors.workspace = true
+description.workspace = true
+documentation.workspace = true
+edition.workspace = true
+license.workspace = true
+homepage.workspace = true
+readme.workspace = true
 
 [lib]
 crate-type = ["cdylib"]
 name = "shavee_pam"
 
 [features]
-default = ["yubikey", "file"]
+default = ["file","yubikey"]
 yubikey = []
 file = []
 
 [dependencies]
 pamsm = { version = "0.5.3", features = ["libpam"] }
-shavee_core = { path = "../shavee-core" }
+shavee_core = { package = "shavee_core", path = "../shavee-core", version = "0.7.3"}

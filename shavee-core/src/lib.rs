@@ -126,6 +126,11 @@ mod tests {
         parse_file_size_arguments(vec![&"./shavee".to_string(), &"ten".to_string()]).unwrap_err();
 
         // test for reporting error when more than 2 entries are provided
-        parse_file_size_arguments(vec![&"./shavee".to_string(), &"2048".to_string(), &"ten".to_string()]).unwrap_err();
+        parse_file_size_arguments(vec![
+            &"./shavee".to_string(),
+            &"2048".to_string(),
+            &"ten".to_string(),
+        ])
+        .unwrap_err();
     }
 }
