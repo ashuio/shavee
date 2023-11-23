@@ -3,7 +3,6 @@ name = "shavee_pam"
 version.workspace = true
 authors.workspace = true
 description.workspace = true
-documentation.workspace = true
 edition.workspace = true
 license.workspace = true
 homepage.workspace = true
@@ -20,4 +19,4 @@ file = []
 
 [dependencies]
 pamsm = { version = "0.5.3", features = ["libpam"] }
-shavee_core = { package = "shavee_core", path = "../shavee-core", version = "0.7.3"}
+shavee_core = { package = "shavee_core", path = "../shavee-core", version = "0.7.5"}

@@ -3,13 +3,12 @@ members = ["shavee-bin", "shavee-pam", "shavee-core"]
 resolver = "2"
 
 [workspace.package]
-version = "0.7.3"
+version = "0.7.5"
 authors = ["Ashutosh Verma <shavee@ashu.io>"]
 edition = "2021"
 license = "MIT"
 description = "shavee is a program to automatically decrypt and mount ZFS datasets using Yubikey HMAC as 2FA or any USB drive with support for PAM to auto mount home directories."
-homepage = "https://shavee.ashu.io"
-documentation = "https://shavee.ashu.io"
+homepage = "https://github.com/ashuio/shavee"
 readme = "README.md"
 repository = "https://github.com/ashuio/shavee"
 
