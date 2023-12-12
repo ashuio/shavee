@@ -7,7 +7,7 @@ pub fn hash_argon2(password: &[u8], salt: &[u8]) -> Result<Vec<u8>, argon2::Erro
         salt
     ));
 
-    let params = Params::new(524288, 2, 1, Some(64))?;
+    let params = Params::new(524288, 4, 4, Some(64))?;
 
     let config = Argon2::new_with_secret(
         crate::STATIC_SALT.as_bytes(),
