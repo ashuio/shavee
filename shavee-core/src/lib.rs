@@ -18,6 +18,9 @@ pub const ENV_SALT_VARIABLE: &str = "SHAVEE_SALT";
 /// It must be bigger than 16 bytes
 pub const RANDOM_SALT_LEN: usize = 32;
 
+// Values for the PBKDF2 function
+pub const PBKDF_ROUNDS: u32 = 2048;
+
 use clap;
 #[cfg(feature = "trace")]
 use env_logger;

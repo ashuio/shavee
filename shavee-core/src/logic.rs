@@ -118,8 +118,8 @@ pub fn file_key_calculation(
     salt: &[u8],
 ) -> Result<String, Box<dyn Error>> {
     crate::trace("Calculating passphrase key using Yubikey.");
-    let passhash = password::hash_argon2(pass, salt)?;
-    let key = password::hash_argon2(&[filehash, passhash].concat(), salt)?;
+    let passhash = password::hash_argon2(pass, salt).expect("Hash error");
+    let key = password::hash_argon2(&[filehash, passhash].concat(), salt).expect("Hash error");
     crate::trace("Passphrase is calculated!");
     Ok(base64::Engine::encode(&BASE64_ENGINE, key))
 }
@@ -127,7 +127,7 @@ pub fn file_key_calculation(
 /// Generates ZFS dataset passphrase without 2FA
 pub fn password_mode_hash(password: &[u8], salt: &Vec<u8>) -> Result<String, Box<dyn Error>> {
     crate::trace("Calculating passphrase key without 2FA.");
-    let key = password::hash_argon2(password, salt)?;
+    let key = password::hash_argon2(password, salt).expect("Hash error");
     let passphrase = base64::Engine::encode(&BASE64_ENGINE, key);
     crate::trace("Passphrase is calculated!");
     Ok(passphrase)

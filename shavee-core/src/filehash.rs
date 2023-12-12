@@ -1,5 +1,4 @@
 use curl;
-use sha2::{Digest, Sha512};
 use std::io::{self, BufRead, BufReader};
 
 // max capacity must be a u32 number to be safely casted into usize independent of 32/64bit systems
@@ -28,6 +27,8 @@ fn get_filehash_local(file: &str, size: Option<u64>) -> Result<Vec<u8>, io::Erro
     // default buffer capacity
     let mut buffer_capacity = MAX_BUFFER_CAPACITY as usize;
 
+    let mut hashbuffer: Vec<u8> = Vec::new();
+
     // if "size" argument has provided, then check for its value and if its value is smaller than
     // current buffer capacity then use "size" value for buffer capacity. Otherwise keep the default
     if let Some(s) = remaining_bytes {
@@ -40,7 +41,6 @@ fn get_filehash_local(file: &str, size: Option<u64>) -> Result<Vec<u8>, io::Erro
     };
 
     let mut reader = BufReader::with_capacity(buffer_capacity, file_handle);
-    let mut hasher = Sha512::new();
 
     // If "size" argument is passed then exit loop when unread remaining bytes are 0
     // if no "size" argument (None), then the loop only exits if the file is completely processed (length == 0)
@@ -48,7 +48,11 @@ fn get_filehash_local(file: &str, size: Option<u64>) -> Result<Vec<u8>, io::Erro
         let mut length = {
             // try to fill buffer and on failures exit function with error message
             let buffer = reader.fill_buf()?;
-            hasher.update(buffer);
+
+            for i in buffer {
+                hashbuffer.push(i.to_owned());
+            }
+            //hashbuffer.push(buffer.clone().iter().collect::<&u8>());
             buffer.len()
         };
 
@@ -74,8 +78,13 @@ fn get_filehash_local(file: &str, size: Option<u64>) -> Result<Vec<u8>, io::Erro
         // read length number of bytes
         reader.consume(length);
     }
+
+    let finalhash = crate::password::hash_argon2(&hashbuffer[..], crate::STATIC_SALT.as_bytes())
+        .expect("File Hash Error");
+
+    Ok(finalhash)
     // upon success generate hash and return as Ok(vector)
-    Ok(hasher.finalize().to_vec())
+    //Ok(hasher.finalize().to_vec())
 }
 
 fn get_filehash_http_sftp(
@@ -83,8 +92,8 @@ fn get_filehash_http_sftp(
     port: Option<u16>,
     size: Option<u64>,
 ) -> Result<Vec<u8>, curl::Error> {
+    let mut hashbuffer: Vec<u8> = Vec::new();
     let mut rfile = curl::easy::Easy::new();
-    let mut filehash = Sha512::new();
     rfile.url(file).expect("Invalid URL");
 
     if port.is_some() {
@@ -99,12 +108,17 @@ fn get_filehash_http_sftp(
     {
         let mut transfer = rfile.transfer();
         transfer.write_function(|new_data| {
-            filehash.update(new_data);
+            for i in new_data {
+                hashbuffer.push(i.to_owned());
+            }
             Ok(new_data.len())
         })?;
         transfer.perform()?;
     }
-    return Ok(filehash.finalize().to_vec());
+
+    let finalhash = crate::password::hash_argon2(&hashbuffer[..], crate::STATIC_SALT.as_bytes())
+        .expect("Online File Hash Error");
+    Ok(finalhash)
 }
 
 #[cfg(test)]

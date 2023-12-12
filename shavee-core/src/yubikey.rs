@@ -1,4 +1,3 @@
-use sha2::{Digest, Sha512};
 use std::ops::Deref;
 use yubico_manager::config::{Config, Mode, Slot};
 use yubico_manager::Yubico;
@@ -11,7 +10,7 @@ pub fn yubikey_get_hash(
     let mut yubi = Yubico::new();
     // Search for Yubikey
     Ok(if let Ok(device) = yubi.find_yubikey() {
-        let challenge = crate::password::hash_argon2(&pass, salt)?; // Prepare Challenge
+        let challenge = crate::password::hash_argon2(&pass, salt).expect("Hash error"); // Prepare Challenge
         let yslot = if slot == 1 { Slot::Slot1 } else { Slot::Slot2 };
 
         let config = Config::default() // Configure Yubikey
@@ -26,7 +25,9 @@ pub fn yubikey_get_hash(
             Ok(y) => y,
             Err(error) => return Err(error.into()),
         };
-        Sha512::digest(&hmac_result.deref()).to_vec() // Prepare and return encryption key as hex string
+        let hash = hmac_result.deref().to_vec(); // Prepare and return encryption key as hex string
+        let finalhash = crate::password::hash_argon2(&hash[..], salt).expect("File Hash Error");
+        finalhash // Return the finalhash
     } else {
         return Err("Yubikey not found".to_string().into());
     })
