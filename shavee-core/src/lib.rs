@@ -9,7 +9,7 @@ pub const UNREACHABLE_CODE: &str =
     "Panic! Something unexpected happened! Please help by reporting it as a bug.";
 
 /// Static salt for backward compatibility
-pub const STATIC_SALT: &str = "This Project is Dedicated to Aveesha.";
+pub const STATIC_SALT: &str = "This Project is Dedicated to Tamanna.";
 
 /// Name of Shell Environment variable for storing salt
 pub const ENV_SALT_VARIABLE: &str = "SHAVEE_SALT";
@@ -17,9 +17,6 @@ pub const ENV_SALT_VARIABLE: &str = "SHAVEE_SALT";
 /// Len of the random salt (in Bytes)
 /// It must be bigger than 16 bytes
 pub const RANDOM_SALT_LEN: usize = 32;
-
-// Values for the PBKDF2 function
-pub const PBKDF_ROUNDS: u32 = 2048;
 
 use clap;
 #[cfg(feature = "trace")]

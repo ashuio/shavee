@@ -3,12 +3,11 @@ extern crate pamsm;
 
 use pamsm::{Pam, PamError, PamFlags, PamLibExt, PamServiceModule};
 #[cfg(feature = "file")]
-use shavee_core::filehash;
-use shavee_core::{logic, zfs::Dataset};
+use shavee_core::zfs::Dataset;
+use std::{io::Write, process::Command};
 struct PamShavee;
 
 // TODO: Need unit tests implemented for the PAM module functions
-
 impl PamServiceModule for PamShavee {
     fn open_session(_: Pam, _: PamFlags, _: Vec<String>) -> PamError {
         PamError::SUCCESS
@@ -35,27 +34,34 @@ impl PamServiceModule for PamShavee {
             Err(_) => return PamError::INCOMPLETE,
         };
 
-        match dataset.umount() {
-            Ok(_) => match dataset.unloadkey() {
-                Ok(_) => return PamError::SUCCESS,
+        let mut sets: Vec<Dataset> = dataset.list().unwrap();
+        sets.reverse();
+
+        for dataset in sets {
+            match dataset.umount() {
+                Ok(_) => match dataset.unloadkey() {
+                    Ok(_) => return PamError::SUCCESS,
+                    Err(error) => {
+                        eprintln!(
+                            "Error in unloading ZFS dataset {} key: {}",
+                            dataset.to_string(),
+                            error.to_string()
+                        );
+                        return PamError::SESSION_ERR;
+                    }
+                },
                 Err(error) => {
                     eprintln!(
-                        "Error in unloading ZFS dataset {} key: {}",
+                        "Error in unmounting user {} ZFS dataset: {}",
                         dataset.to_string(),
                         error.to_string()
                     );
                     return PamError::SESSION_ERR;
                 }
-            },
-            Err(error) => {
-                eprintln!(
-                    "Error in unmounting user {} ZFS dataset: {}",
-                    dataset.to_string(),
-                    error.to_string()
-                );
-                return PamError::SESSION_ERR;
             }
         }
+
+        PamError::SUCCESS
     }
 
     fn authenticate(pam: Pam, _flags: PamFlags, args: Vec<String>) -> PamError {
@@ -72,15 +78,8 @@ impl PamServiceModule for PamShavee {
             Err(error) => return error,
         };
 
-        let dataset = match Dataset::new(dataset_name) {
-            Ok(d) => d,
-            Err(e) => {
-                eprintln!("Invalid dataset name: {}", e);
-                return PamError::INCOMPLETE;
-            }
-        };
-
-        let pass = match unwrap_pam_user_pass(pam.get_authtok(None), PamError::AUTHINFO_UNAVAIL) {
+        let password = match unwrap_pam_user_pass(pam.get_authtok(None), PamError::AUTHINFO_UNAVAIL)
+        {
             Ok(slice) => slice.to_string(),
             Err(error) => {
                 eprintln!("Error Getting Password: {}", error);
@@ -88,69 +87,48 @@ impl PamServiceModule for PamShavee {
             }
         };
 
-        let datasets = match dataset.list() {
-            Ok(d) => d,
-            Err(_) => {
-                eprintln!("Unable to list ZFS Datasets");
-                return PamError::BAD_ITEM;
+        let mut exec = match Command::new("shavee")
+            .arg("-marz")
+            .arg(dataset_name)
+            .stdin(std::process::Stdio::piped())
+            .stderr(std::process::Stdio::piped())
+            .spawn()
+        {
+            Ok(child) => child,
+            Err(e) => {
+                eprintln!("Error: {}", e);
+                return PamError::AUTH_ERR;
             }
         };
 
-        for d in datasets {
-            let umode = match d.get_property_2fa() {
-                Ok(k) => k,
-                Err(e) => {
-                    eprintln!("Error Getting Dataset Properties: {}", e);
-                    return PamError::BAD_ITEM;
-                }
-            };
-
-            let salt = match logic::get_salt(Some(&d)) {
-                Ok(salt) => salt,
-                Err(error) => {
-                    eprintln!("Error in determining salt: {}", error.to_string());
-                    return PamError::INCOMPLETE;
-                }
-            };
-            let password: &[u8] = &pass.clone().into_bytes();
-            let result = match umode {
-                #[cfg(feature = "yubikey")]
-                shavee_core::structs::TwoFactorMode::Yubikey { yslot } => {
-                    d.yubi_unlock(password, yslot, &salt)
-                }
-
-                #[cfg(feature = "file")]
-                shavee_core::structs::TwoFactorMode::File { file, port, size } => {
-                    let filehash = match filehash::get_filehash(&file, port, size) {
-                        Ok(hash) => hash,
-                        Err(error) => {
-                            eprintln!("Error in generating filehash: {}", error.to_string());
-                            return PamError::AUTHINFO_UNAVAIL;
-                        }
-                    };
-                    d.file_unlock(password, filehash, &salt)
-                }
-
-                shavee_core::structs::TwoFactorMode::Password => {
-                    let key = match logic::password_mode_hash(password, &salt) {
-                        Ok(key) => key,
-                        Err(error) => {
-                            eprintln!("Error in generating password hash: {}", error.to_string());
-                            return PamError::AUTHINFO_UNAVAIL;
-                        }
-                    };
-                    d.pass_unlock(key)
-                }
-            };
-
-            match result {
-                Ok(_) => {}
-                Err(e) => {
-                    eprintln!("Error in mounting user ZFS dataset: {}", e.to_string());
-                }
+        let pamstdin = match exec.stdin.as_mut() {
+            Some(s) => s,
+            None => {
+                eprintln!("Failed to open child stdin");
+                return PamError::AUTH_ERR;
             }
+        };
+        match pamstdin.write_all(password.as_str().as_bytes()) {
+            Ok(()) => {}
+            Err(e) => {
+                eprintln!("Error: {}", e);
+                return PamError::AUTH_ERR;
+            }
+        };
+
+        let res = match exec.wait() {
+            Ok(ok) => ok,
+            Err(e) => {
+                eprintln!("Error: {}", e);
+                return PamError::AUTH_ERR;
+            }
+        };
+
+        if res.success() {
+            return PamError::SUCCESS;
         }
-        PamError::SUCCESS
+
+        PamError::AUTH_ERR
     }
 
     fn setcred(_: Pam, _: PamFlags, _: Vec<String>) -> PamError {

@@ -20,3 +20,4 @@ file = []
 [dependencies]
 pamsm = { version = "0.5.3", features = ["libpam"] }
 shavee_core = { package = "shavee_core", path = "../shavee-core", version = "1.0.0"}
+

@@ -3,6 +3,7 @@ use args::*;
 use atty::Stream;
 #[cfg(feature = "file")]
 use shavee_core::filehash::get_filehash;
+use shavee_core::zfs::Dataset;
 use shavee_core::{structs::TwoFactorMode, zfs::resolve_recursive};
 use std::collections::HashMap;
 use std::io::stdin;
@@ -69,26 +70,33 @@ async fn run(args: CliArgs) -> Result<Option<String>, Box<dyn std::error::Error>
                 if recursive {
                     sets = resolve_recursive(datasets)?;
                 }
+
+                let mut sethashes: HashMap<String, String> = HashMap::new();
+
+                let mut handles = vec![];
+                for d in sets.clone() {
+                    let password = password.clone();
+                    let handle = tokio::spawn(async move { auto_get_key(d, password) });
+                    handles.push(handle);
+                }
+
+                for handle in handles {
+                    let val = match handle.await.unwrap() {
+                        Ok(val) => val,
+                        Err(e) => [e.0, e.1.to_string()],
+                    };
+                    sethashes.insert(val[0].clone(), val[1].clone());
+                }
+
                 for d in sets {
-                    let second_factor = d.get_property_2fa()?;
-                    let salt = shavee_core::logic::get_salt(Some(&d))?;
-                    match second_factor {
-                        #[cfg(feature = "yubikey")]
-                        TwoFactorMode::Yubikey { yslot } => {
-                            d.yubi_unlock(password.as_bytes(), yslot, &salt)?
+                    let pass = sethashes.get(&d.to_string()).unwrap();
+                    if pass.len() == 86 {
+                        match d.loadkey(pass) {
+                            Ok(_) => {
+                                let _ = d.mount();
+                            }
+                            Err(_) => {}
                         }
-                        #[cfg(feature = "file")]
-                        TwoFactorMode::File {
-                            ref file,
-                            port,
-                            size,
-                        } => {
-                            let filehash = get_filehash(file.clone().as_str(), port, size)?;
-                            d.file_unlock(password.as_bytes(), filehash, &salt)?
-                        }
-                        TwoFactorMode::Password => d.pass_unlock(
-                            shavee_core::logic::password_mode_hash(&password.as_bytes(), &salt)?,
-                        )?,
                     }
                 }
 
@@ -126,48 +134,15 @@ async fn run(args: CliArgs) -> Result<Option<String>, Box<dyn std::error::Error>
                 let mut handles = vec![];
                 for d in sets {
                     let password = password.clone();
-                    let handle = tokio::spawn(async move {
-                        let salt = shavee_core::logic::get_salt(Some(&d)).unwrap();
-                        let password = password;
-                        let second_factor = d.get_property_2fa().unwrap();
-                        let passphrase = match second_factor {
-                            #[cfg(feature = "yubikey")]
-                            TwoFactorMode::Yubikey { yslot } => {
-                                shavee_core::logic::yubi_key_calculation(
-                                    &password.as_bytes(),
-                                    yslot,
-                                    &salt,
-                                )
-                                .unwrap()
-                            }
-                            #[cfg(feature = "file")]
-                            TwoFactorMode::File {
-                                ref file,
-                                port,
-                                size,
-                            } => {
-                                let filehash =
-                                    get_filehash(file.clone().as_str(), port, size).unwrap();
-                                shavee_core::logic::file_key_calculation(
-                                    &password.as_bytes(),
-                                    filehash.clone(),
-                                    &salt,
-                                )
-                                .unwrap()
-                            }
-                            TwoFactorMode::Password => {
-                                shavee_core::logic::password_mode_hash(&password.as_bytes(), &salt)
-                                    .unwrap()
-                            }
-                        };
-
-                        [d.to_string(), passphrase]
-                    });
+                    let handle = tokio::spawn(async move { auto_get_key(d, password) });
                     handles.push(handle);
                 }
 
                 for handle in handles {
-                    let val = handle.await.unwrap();
+                    let val = match handle.await.unwrap() {
+                        Ok(val) => val,
+                        Err(e) => [e.0, e.1.to_string()],
+                    };
                     sethashes.insert(val[0].clone(), val[1].clone());
                 }
 
@@ -389,6 +364,92 @@ async fn run(args: CliArgs) -> Result<Option<String>, Box<dyn std::error::Error>
     };
 
     Ok(exit_result)
+}
+
+fn auto_get_key(
+    dataset: Dataset,
+    password: String,
+) -> Result<[String; 2], (String, Box<dyn std::error::Error + Send>)> {
+    let salt = match shavee_core::logic::get_salt(Some(&dataset)) {
+        Ok(salt) => salt,
+        Err(e) => {
+            let e = Box::new(std::io::Error::new(
+                std::io::ErrorKind::Other,
+                e.to_string(),
+            ));
+            return Err((dataset.to_string(), e));
+        }
+    };
+    let second_factor = match dataset.get_property_2fa() {
+        Ok(sf) => sf,
+        Err(e) => {
+            let e = Box::new(std::io::Error::new(
+                std::io::ErrorKind::Other,
+                e.to_string(),
+            ));
+            return Err((dataset.to_string(), e));
+        }
+    };
+    let passphrase = match second_factor {
+        #[cfg(feature = "yubikey")]
+        TwoFactorMode::Yubikey { yslot } => {
+            match shavee_core::logic::yubi_key_calculation(&password.as_bytes(), yslot, &salt) {
+                Ok(s) => s,
+                Err(e) => {
+                    let e = Box::new(std::io::Error::new(
+                        std::io::ErrorKind::Other,
+                        e.to_string(),
+                    ));
+                    return Err((dataset.to_string(), e));
+                }
+            }
+        }
+        #[cfg(feature = "file")]
+        TwoFactorMode::File {
+            ref file,
+            port,
+            size,
+        } => {
+            let filehash = match get_filehash(file.clone().as_str(), port, size) {
+                Ok(fh) => fh,
+                Err(e) => {
+                    let e = Box::new(std::io::Error::new(
+                        std::io::ErrorKind::Other,
+                        e.to_string(),
+                    ));
+                    return Err((dataset.to_string(), e));
+                }
+            };
+            match shavee_core::logic::file_key_calculation(
+                &password.as_bytes(),
+                filehash.clone(),
+                &salt,
+            ) {
+                Ok(s) => s,
+                Err(e) => {
+                    let e = Box::new(std::io::Error::new(
+                        std::io::ErrorKind::Other,
+                        e.to_string(),
+                    ));
+                    return Err((dataset.to_string(), e));
+                }
+            }
+        }
+        TwoFactorMode::Password => {
+            match shavee_core::logic::password_mode_hash(&password.as_bytes(), &salt) {
+                Ok(p) => p,
+                Err(e) => {
+                    let e = Box::new(std::io::Error::new(
+                        std::io::ErrorKind::Other,
+                        e.to_string(),
+                    ));
+                    return Err((dataset.to_string(), e));
+                }
+            }
+        }
+    };
+
+    Ok([dataset.to_string(), passphrase])
 }
 
 // #[cfg(test)]
