@@ -71,23 +71,7 @@ async fn run(args: CliArgs) -> Result<Option<String>, Box<dyn std::error::Error>
                     sets = resolve_recursive(datasets)?;
                 }
 
-                let mut sethashes: HashMap<String, String> = HashMap::new();
-
-                let mut handles = vec![];
-                for d in sets.clone() {
-                    let password = password.clone();
-                    let handle = tokio::spawn(async move { auto_get_key(d, password) });
-                    handles.push(handle);
-                }
-
-                for handle in handles {
-                    let val = match handle.await.unwrap() {
-                        Ok(val) => val,
-                        Err(e) => [e.0, e.1.to_string()],
-                    };
-                    sethashes.insert(val[0].clone(), val[1].clone());
-                }
-
+                let sethashes = get_key_hash(sets.clone(), password, None).await?;
                 for d in sets {
                     let pass = sethashes.get(&d.to_string()).unwrap();
                     if pass.len() == 86 {
@@ -129,23 +113,7 @@ async fn run(args: CliArgs) -> Result<Option<String>, Box<dyn std::error::Error>
                     setnames.push(set.to_string())
                 }
 
-                let mut sethashes: HashMap<String, String> = HashMap::new();
-
-                let mut handles = vec![];
-                for d in sets {
-                    let password = password.clone();
-                    let handle = tokio::spawn(async move { auto_get_key(d, password) });
-                    handles.push(handle);
-                }
-
-                for handle in handles {
-                    let val = match handle.await.unwrap() {
-                        Ok(val) => val,
-                        Err(e) => [e.0, e.1.to_string()],
-                    };
-                    sethashes.insert(val[0].clone(), val[1].clone());
-                }
-
+                let sethashes = get_key_hash(sets.clone(), password, None).await?;
                 for dataset in setnames {
                     if printwithname {
                         println!(
@@ -243,27 +211,18 @@ async fn run(args: CliArgs) -> Result<Option<String>, Box<dyn std::error::Error>
                     if recursive {
                         sets = resolve_recursive(sets)?;
                     }
+
+                    let sethashes =
+                        get_key_hash(sets.clone(), password, Some(args.second_factor)).await?;
+
                     for d in sets {
-                        let salt = shavee_core::logic::get_salt(Some(&d))?;
-                        match args.second_factor {
-                            #[cfg(feature = "yubikey")]
-                            TwoFactorMode::Yubikey { yslot } => {
-                                d.yubi_unlock(password.as_bytes(), yslot, &salt)?
-                            }
-                            #[cfg(feature = "file")]
-                            TwoFactorMode::File {
-                                ref file,
-                                port,
-                                size,
-                            } => {
-                                let filehash = get_filehash(file.clone().as_str(), port, size)?;
-                                d.file_unlock(password.as_bytes(), filehash.clone(), &salt)?
-                            }
-                            TwoFactorMode::Password => {
-                                d.pass_unlock(shavee_core::logic::password_mode_hash(
-                                    &password.as_bytes(),
-                                    &salt,
-                                )?)?
+                        let pass = sethashes.get(&d.to_string()).unwrap();
+                        if pass.len() == 86 {
+                            match d.loadkey(pass) {
+                                Ok(_) => {
+                                    let _ = d.mount();
+                                }
+                                Err(_) => {}
                             }
                         }
                     }
@@ -291,38 +250,23 @@ async fn run(args: CliArgs) -> Result<Option<String>, Box<dyn std::error::Error>
                         println!();
                     }
 
-                    for d in sets {
-                        let salt = shavee_core::logic::get_salt(Some(&d))?;
-                        let passphrase = match args.second_factor {
-                            #[cfg(feature = "yubikey")]
-                            TwoFactorMode::Yubikey { yslot } => {
-                                shavee_core::logic::yubi_key_calculation(
-                                    password.as_bytes(),
-                                    yslot,
-                                    &salt,
-                                )?
-                            }
-                            #[cfg(feature = "file")]
-                            TwoFactorMode::File {
-                                ref file,
-                                port,
-                                size,
-                            } => {
-                                let filehash = get_filehash(file.clone().as_str(), port, size)?;
-                                shavee_core::logic::file_key_calculation(
-                                    &password.as_bytes(),
-                                    filehash.clone(),
-                                    &salt,
-                                )?
-                            }
-                            TwoFactorMode::Password => {
-                                shavee_core::logic::password_mode_hash(&password.as_bytes(), &salt)?
-                            }
-                        };
+                    let mut setnames: Vec<String> = vec![];
+
+                    for set in sets.clone() {
+                        setnames.push(set.to_string())
+                    }
+
+                    let sethashes =
+                        get_key_hash(sets.clone(), password, Some(args.second_factor)).await?;
+                    for dataset in setnames {
                         if printwithname {
-                            println!("{:<maxlength$}    {}", d.to_string(), passphrase);
+                            println!(
+                                "{:<maxlength$}    {}",
+                                dataset,
+                                sethashes.get(&dataset).unwrap()
+                            );
                         } else {
-                            println!("{}", passphrase);
+                            println!("{}", sethashes.get(&dataset).unwrap());
                         }
                     }
 
@@ -366,9 +310,35 @@ async fn run(args: CliArgs) -> Result<Option<String>, Box<dyn std::error::Error>
     Ok(exit_result)
 }
 
-fn auto_get_key(
+async fn get_key_hash(
+    datasets: Vec<Dataset>,
+    password: String,
+    second_factor: Option<TwoFactorMode>,
+) -> Result<HashMap<String, String>, Box<dyn std::error::Error>> {
+    let mut sethashes: HashMap<String, String> = HashMap::new();
+
+    let mut handles = vec![];
+    for d in datasets.clone() {
+        let password = password.clone();
+        let second_factor = second_factor.clone();
+        let handle = tokio::spawn(async move { get_keys(d, password, second_factor) });
+        handles.push(handle);
+    }
+
+    for handle in handles {
+        let val = match handle.await.unwrap() {
+            Ok(val) => val,
+            Err(e) => [e.0, e.1.to_string()],
+        };
+        sethashes.insert(val[0].clone(), val[1].clone());
+    }
+    Ok(sethashes)
+}
+
+fn get_keys(
     dataset: Dataset,
     password: String,
+    second_factor: Option<TwoFactorMode>,
 ) -> Result<[String; 2], (String, Box<dyn std::error::Error + Send>)> {
     let salt = match shavee_core::logic::get_salt(Some(&dataset)) {
         Ok(salt) => salt,
@@ -380,16 +350,21 @@ fn auto_get_key(
             return Err((dataset.to_string(), e));
         }
     };
-    let second_factor = match dataset.get_property_2fa() {
-        Ok(sf) => sf,
-        Err(e) => {
-            let e = Box::new(std::io::Error::new(
-                std::io::ErrorKind::Other,
-                e.to_string(),
-            ));
-            return Err((dataset.to_string(), e));
-        }
+
+    let second_factor = match second_factor {
+        Some(sf) => sf,
+        None => match dataset.get_property_2fa() {
+            Ok(sf) => sf,
+            Err(e) => {
+                let e = Box::new(std::io::Error::new(
+                    std::io::ErrorKind::Other,
+                    e.to_string(),
+                ));
+                return Err((dataset.to_string(), e));
+            }
+        },
     };
+
     let passphrase = match second_factor {
         #[cfg(feature = "yubikey")]
         TwoFactorMode::Yubikey { yslot } => {
