@@ -33,7 +33,7 @@ impl PamServiceModule for PamShavee {
         };
 
         match dataset.umount() {
-            Ok(dataset) => match dataset.unloadkeys() {
+            Ok(dataset) => match dataset.unloadkeys_recursive() {
                 Ok(_) => return PamError::SUCCESS,
                 Err(e) => {
                     eprintln!("{}", e);

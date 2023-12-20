@@ -651,7 +651,7 @@ impl Dataset {
         Dataset::simple_subcommand(self, "unload-key")
     }
 
-    pub fn unloadkeys(&self) -> Result<Self, std::io::Error> {
+    pub fn unloadkeys_recursive(&self) -> Result<Self, std::io::Error> {
         let command_output = Command::new("zfs")
         .arg("unload-key")
         .arg("-r")

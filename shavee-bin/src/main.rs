@@ -76,7 +76,17 @@ async fn run(args: CliArgs) -> Result<Option<String>, Box<dyn std::error::Error>
                     sets = resolve_recursive(datasets)?;
                 }
 
+                let mut maxlength: usize = 0;
+
+                for d in sets.clone() {
+                    let len = d.to_string().len();
+                    if len > maxlength {
+                        maxlength = len;
+                    }
+                }
+
                 let sethashes = get_key_hash(sets.clone(), password, None).await?;
+                let mut errors: Vec<(String, String)> = vec![];
                 for d in sets {
                     let pass = sethashes.get(&d.to_string()).unwrap();
                     if pass.len() == 86 {
@@ -86,10 +96,26 @@ async fn run(args: CliArgs) -> Result<Option<String>, Box<dyn std::error::Error>
                             }
                             Err(_) => {}
                         }
+                    } else {
+                        errors.push((d.to_string(), pass.to_owned()));
                     }
                 }
 
-                exit_result = None
+                if !errors.is_empty() {
+                    eprintln!("\x1b[1m{:<maxlength$}    {}\x1b[0m", "Dataset", "Error");
+                    eprintln!();
+                    for error in errors {
+                        eprintln!("{:<maxlength$}    {}", error.0, error.1);
+                    }
+
+                    let e = Box::new(std::io::Error::new(
+                        std::io::ErrorKind::Other,
+                        "Failed to mount Datasets",
+                    ));
+                    return Err(e);
+                } else {
+                    exit_result = None
+                }
             }
             Operations::PrintDataset {
                 datasets,
@@ -119,19 +145,34 @@ async fn run(args: CliArgs) -> Result<Option<String>, Box<dyn std::error::Error>
                 }
 
                 let sethashes = get_key_hash(sets.clone(), password, None).await?;
+                let mut errors: Vec<(String, String)> = vec![];
                 for dataset in setnames {
-                    if printwithname {
-                        println!(
-                            "{:<maxlength$}    {}",
-                            dataset,
-                            sethashes.get(&dataset).unwrap()
-                        );
+                    let pass = sethashes.get(&dataset).unwrap();
+                    if pass.len() == 86 {
+                        if printwithname {
+                            println!("{:<maxlength$}    {}", dataset, pass);
+                        } else {
+                            println!("{}", sethashes.get(&dataset).unwrap());
+                        }
                     } else {
-                        println!("{}", sethashes.get(&dataset).unwrap());
+                        errors.push((dataset.to_string(), pass.to_owned()));
                     }
                 }
+                if !errors.is_empty() {
+                    eprintln!("\x1b[1m{:<maxlength$}    {}\x1b[0m", "Dataset", "Error");
+                    eprintln!();
+                    for error in errors {
+                        eprintln!("{:<maxlength$}    {}", error.0, error.1);
+                    }
 
-                exit_result = None;
+                    let e = Box::new(std::io::Error::new(
+                        std::io::ErrorKind::Other,
+                        "Failed to mount Datasets",
+                    ));
+                    return Err(e);
+                } else {
+                    exit_result = None
+                }
             }
 
             Operations::Create { .. } => {
@@ -216,10 +257,19 @@ async fn run(args: CliArgs) -> Result<Option<String>, Box<dyn std::error::Error>
                     if recursive {
                         sets = resolve_recursive(sets)?;
                     }
+                    let mut maxlength: usize = 0;
+
+                    for d in sets.clone() {
+                        let len = d.to_string().len();
+                        if len > maxlength {
+                            maxlength = len;
+                        }
+                    }
 
                     let sethashes =
                         get_key_hash(sets.clone(), password, Some(args.second_factor)).await?;
 
+                    let mut errors: Vec<(String, String)> = vec![];
                     for d in sets {
                         let pass = sethashes.get(&d.to_string()).unwrap();
                         if pass.len() == 86 {
@@ -229,10 +279,26 @@ async fn run(args: CliArgs) -> Result<Option<String>, Box<dyn std::error::Error>
                                 }
                                 Err(_) => {}
                             }
+                        } else {
+                            errors.push((d.to_string(), pass.to_owned()));
                         }
                     }
 
-                    exit_result = None;
+                    if !errors.is_empty() {
+                        eprintln!("\x1b[1m{:<maxlength$}    {}\x1b[0m", "Dataset", "Error");
+                        eprintln!();
+                        for error in errors {
+                            eprintln!("{:<maxlength$}    {}", error.0, error.1);
+                        }
+
+                        let e = Box::new(std::io::Error::new(
+                            std::io::ErrorKind::Other,
+                            "Failed to mount Datasets",
+                        ));
+                        return Err(e);
+                    } else {
+                        exit_result = None
+                    }
                 }
                 Operations::PrintDataset {
                     datasets,
@@ -263,19 +329,34 @@ async fn run(args: CliArgs) -> Result<Option<String>, Box<dyn std::error::Error>
 
                     let sethashes =
                         get_key_hash(sets.clone(), password, Some(args.second_factor)).await?;
+                    let mut errors: Vec<(String, String)> = vec![];
                     for dataset in setnames {
-                        if printwithname {
-                            println!(
-                                "{:<maxlength$}    {}",
-                                dataset,
-                                sethashes.get(&dataset).unwrap()
-                            );
+                        let pass = sethashes.get(&dataset).unwrap();
+                        if pass.len() == 86 {
+                            if printwithname {
+                                println!("{:<maxlength$}    {}", dataset, pass);
+                            } else {
+                                println!("{}", sethashes.get(&dataset).unwrap());
+                            }
                         } else {
-                            println!("{}", sethashes.get(&dataset).unwrap());
+                            errors.push((dataset.to_string(), pass.to_owned()));
                         }
                     }
+                    if !errors.is_empty() {
+                        eprintln!("\x1b[1m{:<maxlength$}    {}\x1b[0m", "Dataset", "Error");
+                        eprintln!();
+                        for error in errors {
+                            eprintln!("{:<maxlength$}    {}", error.0, error.1);
+                        }
 
-                    exit_result = None;
+                        let e = Box::new(std::io::Error::new(
+                            std::io::ErrorKind::Other,
+                            "Failed to mount Datasets",
+                        ));
+                        return Err(e);
+                    } else {
+                        exit_result = None
+                    }
                 }
                 Operations::Print => {
                     shavee_core::trace("\tGenerate password.");
@@ -386,14 +467,14 @@ fn get_keys(
             let yubihash = match yubi.find_yubikey() {
                 Ok(device) => {
                     let yslot = if yslot == 1 { Slot::Slot1 } else { Slot::Slot2 };
-                    
+
                     let config = Config::default() // Configure Yubikey
                         .set_vendor_id(device.vendor_id)
                         .set_product_id(device.product_id)
                         .set_variable_size(false)
                         .set_mode(Mode::Sha1)
                         .set_slot(yslot);
-                    
+
                     let hmac_result = yubi.challenge_response_hmac(&challenge, config);
                     drop(lock);
                     let hmac_result = match hmac_result {
