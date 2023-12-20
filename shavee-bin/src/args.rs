@@ -88,7 +88,7 @@ impl CliArgs {
                     .num_args(1..)
                     .long("zset")
                     .value_name("ZFS dataset")
-                    .required(false)
+                    .required(true)
                     .next_line_help(true)   // long help description will be printed in the next line
                     .help("ZFS Dataset eg. \"zroot/data/home\"\n\
                     If present in conjunction with any of the other options, it will try to unlock and mount the \

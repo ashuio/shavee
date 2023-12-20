@@ -217,7 +217,8 @@ async fn run(args: CliArgs) -> Result<Option<String>, Box<dyn std::error::Error>
                                 port,
                                 size,
                             } => {
-                                let filehash = get_filehash(file.clone().as_str(), port, size)?;
+                                let filehash =
+                                    get_filehash(file.clone().as_str(), port, size, &salt[..])?;
                                 dataset.clone().file_create(
                                     password.as_bytes(),
                                     filehash.clone(),
@@ -465,7 +466,7 @@ fn get_keys(
             port,
             size,
         } => {
-            let filehash = match get_filehash(file.clone().as_str(), port, size) {
+            let filehash = match get_filehash(file.clone().as_str(), port, size, &salt[..]) {
                 Ok(fh) => fh,
                 Err(e) => {
                     let e = Box::new(std::io::Error::new(
