@@ -29,37 +29,22 @@ impl PamServiceModule for PamShavee {
 
         let dataset = match Dataset::new(dataset_name) {
             Ok(d) => d,
-            Err(_) => return PamError::INCOMPLETE,
+            Err(_) => return PamError::SESSION_ERR,
         };
 
-        let mut sets: Vec<Dataset> = dataset.list().unwrap();
-        sets.reverse();
-
-        for dataset in sets {
-            match dataset.umount() {
-                Ok(_) => match dataset.unloadkey() {
-                    Ok(_) => {},
-                    Err(error) => {
-                        eprintln!(
-                            "Error in unloading ZFS dataset {} key: {}",
-                            dataset.to_string(),
-                            error.to_string()
-                        );
-                        return PamError::SESSION_ERR;
-                    }
-                },
-                Err(error) => {
-                    eprintln!(
-                        "Error in unmounting user {} ZFS dataset: {}",
-                        dataset.to_string(),
-                        error.to_string()
-                    );
+        match dataset.umount() {
+            Ok(dataset) => match dataset.unloadkeys() {
+                Ok(_) => return PamError::SUCCESS,
+                Err(e) => {
+                    eprintln!("{}", e);
                     return PamError::SESSION_ERR;
                 }
+            },
+            Err(e) => {
+                eprintln!("{}", e);
+                return PamError::SESSION_ERR;
             }
         }
-
-        PamError::SUCCESS
     }
 
     fn authenticate(pam: Pam, _flags: PamFlags, args: Vec<String>) -> PamError {

@@ -651,6 +651,25 @@ impl Dataset {
         Dataset::simple_subcommand(self, "unload-key")
     }
 
+    pub fn unloadkeys(&self) -> Result<Self, std::io::Error> {
+        let command_output = Command::new("zfs")
+        .arg("unload-key")
+        .arg("-r")
+        .arg(&self.dataset)
+        .output()?;
+
+        if !command_output.status.success() {
+            crate::error("Command failed!");
+            return Err(std::io::Error::new(
+                // error kind is not known
+                std::io::ErrorKind::Other,
+                //stderr used to generate the error message.
+                String::from_utf8_lossy(&command_output.stderr).to_string(),
+            ));
+        };
+        Ok(self.to_owned())
+    }
+
     fn simple_subcommand(&self, subcommand: &str) -> Result<Self, std::io::Error> {
         crate::trace(&format!("Executing ZFS \"{}\" command.", subcommand));
         let command_output = Command::new("zfs")

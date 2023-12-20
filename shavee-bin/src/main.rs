@@ -379,20 +379,21 @@ fn get_keys(
             let mut yubi = Yubico::new();
             // Search for Yubikey
 
+            let challenge = shavee_core::password::hash_argon2(&password.as_bytes(), &salt)
+                .expect("Hash error"); // Prepare Challenge
+
             let lock = yubikey_device.lock().unwrap();
             let yubihash = match yubi.find_yubikey() {
                 Ok(device) => {
-                    let challenge = shavee_core::password::hash_argon2(&password.as_bytes(), &salt)
-                        .expect("Hash error"); // Prepare Challenge
                     let yslot = if yslot == 1 { Slot::Slot1 } else { Slot::Slot2 };
-
+                    
                     let config = Config::default() // Configure Yubikey
                         .set_vendor_id(device.vendor_id)
                         .set_product_id(device.product_id)
                         .set_variable_size(false)
                         .set_mode(Mode::Sha1)
                         .set_slot(yslot);
-
+                    
                     let hmac_result = yubi.challenge_response_hmac(&challenge, config);
                     drop(lock);
                     let hmac_result = match hmac_result {
