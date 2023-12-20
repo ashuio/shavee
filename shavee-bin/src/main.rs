@@ -7,6 +7,11 @@ use shavee_core::zfs::Dataset;
 use shavee_core::{structs::TwoFactorMode, zfs::resolve_recursive};
 use std::collections::HashMap;
 use std::io::stdin;
+use std::sync::Mutex;
+
+use std::ops::Deref;
+use yubico_manager::config::{Config, Mode, Slot};
+use yubico_manager::Yubico;
 
 /// main() collect the arguments from command line, pass them to run() and print any
 /// messages upon exiting the program
@@ -316,12 +321,14 @@ async fn get_key_hash(
     second_factor: Option<TwoFactorMode>,
 ) -> Result<HashMap<String, String>, Box<dyn std::error::Error>> {
     let mut sethashes: HashMap<String, String> = HashMap::new();
-
+    let yubikey_device = std::sync::Arc::new(Mutex::new(()));
     let mut handles = vec![];
     for d in datasets.clone() {
         let password = password.clone();
         let second_factor = second_factor.clone();
-        let handle = tokio::spawn(async move { get_keys(d, password, second_factor) });
+        let yubikey_device = yubikey_device.clone();
+        let handle =
+            tokio::spawn(async move { get_keys(d, password, second_factor, yubikey_device) });
         handles.push(handle);
     }
 
@@ -339,6 +346,7 @@ fn get_keys(
     dataset: Dataset,
     password: String,
     second_factor: Option<TwoFactorMode>,
+    yubikey_device: std::sync::Arc<Mutex<()>>,
 ) -> Result<[String; 2], (String, Box<dyn std::error::Error + Send>)> {
     let salt = match shavee_core::logic::get_salt(Some(&dataset)) {
         Ok(salt) => salt,
@@ -351,7 +359,7 @@ fn get_keys(
         }
     };
 
-    let second_factor = match second_factor {
+    let second_factor = match second_factor.clone() {
         Some(sf) => sf,
         None => match dataset.get_property_2fa() {
             Ok(sf) => sf,
@@ -368,16 +376,38 @@ fn get_keys(
     let passphrase = match second_factor {
         #[cfg(feature = "yubikey")]
         TwoFactorMode::Yubikey { yslot } => {
-            match shavee_core::logic::yubi_key_calculation(&password.as_bytes(), yslot, &salt) {
-                Ok(s) => s,
-                Err(e) => {
-                    let e = Box::new(std::io::Error::new(
-                        std::io::ErrorKind::Other,
-                        e.to_string(),
-                    ));
-                    return Err((dataset.to_string(), e));
+            let mut yubi = Yubico::new();
+            // Search for Yubikey
+
+            let lock = yubikey_device.lock().unwrap();
+            let yubihash = match yubi.find_yubikey() {
+                Ok(device) => {
+                    let challenge = shavee_core::password::hash_argon2(&password.as_bytes(), &salt)
+                        .expect("Hash error"); // Prepare Challenge
+                    let yslot = if yslot == 1 { Slot::Slot1 } else { Slot::Slot2 };
+
+                    let config = Config::default() // Configure Yubikey
+                        .set_vendor_id(device.vendor_id)
+                        .set_product_id(device.product_id)
+                        .set_variable_size(false)
+                        .set_mode(Mode::Sha1)
+                        .set_slot(yslot);
+
+                    let hmac_result = yubi.challenge_response_hmac(&challenge, config);
+                    drop(lock);
+                    let hmac_result = match hmac_result {
+                        Ok(y) => y,
+                        Err(error) => return Err((dataset.to_string(), Box::new(error))),
+                    };
+                    let hash = hmac_result.deref().to_vec(); // Prepare and return encryption key as hex string
+                    let finalhash = shavee_core::password::hash_argon2(&hash[..], &salt)
+                        .expect("File Hash Error");
+                    finalhash // Return the finalhash
                 }
-            }
+                Err(error) => return Err((dataset.to_string(), Box::new(error))),
+            };
+
+            base64::Engine::encode(&shavee_core::logic::BASE64_ENGINE, yubihash)
         }
         #[cfg(feature = "file")]
         TwoFactorMode::File {

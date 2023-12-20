@@ -107,7 +107,6 @@ pub fn yubi_key_calculation(
 ) -> Result<String, Box<dyn Error>> {
     crate::trace("Calculating passphrase key using Yubikey.");
     let key = yubikey_get_hash(pass, yubi_slot, salt)?;
-    crate::trace("Passphrase is calculated!");
     Ok(base64::Engine::encode(&BASE64_ENGINE, key))
 }
 
