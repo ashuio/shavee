@@ -5,6 +5,8 @@
 
 shavee is a simple program and a pam module to automatically decrypt and mount encrypted ZFS user home directories using Yubikey HMAC or a Simple USB drive as 2FA written in rust.
 
+NOTE: Shavee v1.0.0 and greater and NOT backwards compatible with Datasets created with earlier versions.
+
 ## Supported methods
 This program currently supports two methods for 2FA:
 
@@ -223,12 +225,14 @@ In our example we will be adding it to **/etc/pam.d/sddm** to handle graphical l
 
 **Add the following line to you pam config file**
 ```
-auth    optional    libshavee_pam.so <Base home Dataset>
+auth       optional    libshavee_pam.so <Base home Dataset>
+session    optional    libshavee_pam.so <Base home Dataset>
 ```
 
 **Example**
 ```
-auth    optional    libshavee_pam.so zroot/data/home
+auth       optional    libshavee_pam.so zroot/data/home
+session    optional    libshavee_pam.so zroot/data/home
 ``` 
 Where `zroot/data/home` mounts to `/home`
 
