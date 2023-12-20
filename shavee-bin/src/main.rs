@@ -113,9 +113,8 @@ async fn run(args: CliArgs) -> Result<Option<String>, Box<dyn std::error::Error>
                         "Failed to mount Datasets",
                     ));
                     return Err(e);
-                } else {
-                    exit_result = None
                 }
+                exit_result = None
             }
             Operations::PrintDataset {
                 datasets,
@@ -170,15 +169,14 @@ async fn run(args: CliArgs) -> Result<Option<String>, Box<dyn std::error::Error>
                         "Failed to mount Datasets",
                     ));
                     return Err(e);
-                } else {
-                    exit_result = None
                 }
+                exit_result = None
             }
 
             Operations::Create { .. } => {
                 eprintln!("{}", shavee_core::UNREACHABLE_CODE);
             }
-            Operations::Print => {
+            Operations::PrintHelp => {
                 eprintln!("{}", shavee_core::UNREACHABLE_CODE);
             }
         },
@@ -296,9 +294,8 @@ async fn run(args: CliArgs) -> Result<Option<String>, Box<dyn std::error::Error>
                             "Failed to mount Datasets",
                         ));
                         return Err(e);
-                    } else {
-                        exit_result = None
                     }
+                    exit_result = None
                 }
                 Operations::PrintDataset {
                     datasets,
@@ -354,40 +351,11 @@ async fn run(args: CliArgs) -> Result<Option<String>, Box<dyn std::error::Error>
                             "Failed to mount Datasets",
                         ));
                         return Err(e);
-                    } else {
-                        exit_result = None
                     }
+                    exit_result = None
                 }
-                Operations::Print => {
-                    shavee_core::trace("\tGenerate password.");
-                    let salt = shavee_core::logic::get_salt(None)?;
-                    let passphrase = match args.second_factor {
-                        #[cfg(feature = "yubikey")]
-                        TwoFactorMode::Yubikey { yslot } => {
-                            shavee_core::logic::yubi_key_calculation(
-                                password.as_bytes(),
-                                yslot,
-                                &salt,
-                            )?
-                        }
-                        #[cfg(feature = "file")]
-                        TwoFactorMode::File {
-                            ref file,
-                            port,
-                            size,
-                        } => {
-                            let filehash = get_filehash(file.clone().as_str(), port, size)?;
-                            shavee_core::logic::file_key_calculation(
-                                &password.as_bytes(),
-                                filehash,
-                                &salt,
-                            )?
-                        }
-                        TwoFactorMode::Password => {
-                            shavee_core::logic::password_mode_hash(&password.as_bytes(), &salt)?
-                        }
-                    };
-                    exit_result = Some(passphrase)
+                Operations::PrintHelp => {
+                    eprintln!("{}", shavee_core::UNREACHABLE_CODE);
                 }
             };
         }

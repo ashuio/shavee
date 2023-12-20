@@ -10,56 +10,6 @@ pub const BASE64_ENGINE: base64::engine::GeneralPurpose = base64::engine::Genera
 
 // All ZFS Dataset functions are methods for the Dataset Struct
 impl Dataset {
-    /// Uses File 2FA to unlocks the dataset
-    pub fn file_unlock(
-        self,
-        passphrase: &[u8],
-        filehash: Vec<u8>,
-        salt: &Vec<u8>,
-    ) -> Result<(), Box<dyn Error>> {
-        crate::trace(&format!(
-            "Unlocking ZFS \"{:?}\" dataset using File as 2FA.",
-            self
-        ));
-        let passphrase = file_key_calculation(passphrase, filehash, salt)?;
-        self.loadkey(&passphrase)?.mount()?;
-        crate::trace("Unlocked and mounted successfully!");
-        Ok(())
-    }
-
-    /// Uses Yubikey  2FA to unlocks the dataset
-    pub fn yubi_unlock(
-        self,
-        passphrase: &[u8],
-        yubi_slot: u8,
-        salt: &Vec<u8>,
-    ) -> Result<(), Box<dyn Error>> {
-        crate::trace(&format!(
-            "Unlocking ZFS \"{:?}\" dataset using Yubikey as 2FA.",
-            self
-        ));
-        let passphrase = yubi_key_calculation(passphrase, yubi_slot, salt)?;
-        self.loadkey(&passphrase)?.mount()?;
-        crate::trace("Unlocked and mounted successfully!");
-        Ok(())
-    }
-
-    /// No 2FA used for unlocking the dataset
-    pub fn pass_unlock(self, passphrase: String) -> Result<(), Box<dyn Error>> {
-        crate::trace(&format!(
-            "Unlocking ZFS \"{:?}\" dataset with no 2FA.",
-            self
-        ));
-        self.loadkey(&passphrase)?;
-        let dataset_list = self.list()?;
-
-        for each_set in dataset_list {
-            each_set.mount()?;
-        }
-        crate::trace("Unlocked and mounted successfully!");
-        Ok(())
-    }
-
     /// Uses Yubikey  2FA to create the dataset and stores salt in its ZFS property as base64 encode
     pub fn yubi_create(
         self,
