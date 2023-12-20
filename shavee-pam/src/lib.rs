@@ -14,8 +14,6 @@ impl PamServiceModule for PamShavee {
     }
 
     fn close_session(pam: Pam, _flags: PamFlags, args: Vec<String>) -> PamError {
-        eprintln!("{}", args[0]);
-
         let mut dataset_name = args[0].clone();
         if dataset_name.ends_with("/") {
             dataset_name.pop();
@@ -40,7 +38,7 @@ impl PamServiceModule for PamShavee {
         for dataset in sets {
             match dataset.umount() {
                 Ok(_) => match dataset.unloadkey() {
-                    Ok(_) => return PamError::SUCCESS,
+                    Ok(_) => {},
                     Err(error) => {
                         eprintln!(
                             "Error in unloading ZFS dataset {} key: {}",
