@@ -432,7 +432,6 @@ fn get_keys(
             let challenge = shavee_core::password::hash_argon2(&password.as_bytes(), &salt)
                 .expect("Hash error"); // Prepare Challenge
 
-            let lock = yubikey_device.lock().unwrap();
             let yubihash = match yubi.find_yubikey() {
                 Ok(device) => {
                     let yslot = if yslot == 1 { Slot::Slot1 } else { Slot::Slot2 };
@@ -443,7 +442,8 @@ fn get_keys(
                         .set_variable_size(false)
                         .set_mode(Mode::Sha1)
                         .set_slot(yslot);
-
+                    
+                    let lock = yubikey_device.lock().unwrap();
                     let hmac_result = yubi.challenge_response_hmac(&challenge, config);
                     drop(lock);
                     let hmac_result = match hmac_result {
