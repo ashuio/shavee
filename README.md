@@ -5,7 +5,7 @@
 
 shavee is a simple program and a pam module to automatically decrypt and mount encrypted ZFS user home directories using Yubikey HMAC or a Simple USB drive as 2FA written in rust.
 
-NOTE: Shavee v1.0.0 and greater are NOT backwards compatible with Datasets created with earlier versions.
+**NOTE: Shavee v1.0.0 and greater are NOT backwards compatible with Datasets created with earlier versions. See [Migration Guide.](MIGRATION.md)**
 
 ## Supported methods
 This program currently supports two methods for 2FA:

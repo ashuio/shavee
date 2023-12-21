@@ -70,6 +70,7 @@ impl CliArgs {
             .about(crate_description!()) // Define APP and args
             .author(crate_authors!())
             .version(crate_version!())
+            .arg_required_else_help(true)
             .arg(
                 Arg::new("create")
                     .short('c')
@@ -202,7 +203,7 @@ impl CliArgs {
                     .requires("keyfile")
                     .value_parser(clap::value_parser!(u16))    // port must be accompanied by keyfile option
                     .help("Set port for HTTP(S) and SFTP requests"),
-            ).arg_required_else_help(true);
+            );
 
         // in order to be able to write unit tests, getting the arg matches
         // shouldn't cause new_from() to exit or panic.
