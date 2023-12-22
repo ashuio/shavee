@@ -9,7 +9,6 @@ use std::collections::HashMap;
 use std::io::stdin;
 use std::sync::Mutex;
 
-use std::ops::Deref;
 use yubico_manager::config::{Config, Mode, Slot};
 use yubico_manager::Yubico;
 
@@ -450,7 +449,7 @@ fn get_keys(
                         Ok(y) => y,
                         Err(error) => return Err((dataset.to_string(), Box::new(error))),
                     };
-                    let hash = hmac_result.deref().to_vec(); // Prepare and return encryption key as hex string
+                    let hash = hmac_result.0.to_vec(); // Prepare and return encryption key as hex string
                     let finalhash = shavee_core::password::hash_argon2(&hash[..], &salt)
                         .expect("File Hash Error");
                     finalhash // Return the finalhash

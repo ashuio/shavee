@@ -1,4 +1,3 @@
-use std::ops::Deref;
 use yubico_manager::config::{Config, Mode, Slot};
 use yubico_manager::Yubico;
 
@@ -25,7 +24,7 @@ pub fn yubikey_get_hash(
             Ok(y) => y,
             Err(error) => return Err(error.into()),
         };
-        let hash = hmac_result.deref().to_vec(); // Prepare and return encryption key as hex string
+        let hash = hmac_result.0.to_vec(); // Prepare and return encryption key as hex string
         let finalhash = crate::password::hash_argon2(&hash[..], salt).expect("File Hash Error");
         finalhash // Return the finalhash
     } else {
