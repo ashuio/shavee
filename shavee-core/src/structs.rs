@@ -3,7 +3,8 @@
 pub enum TwoFactorMode {
     #[cfg(feature = "yubikey")]
     Yubikey {
-        yslot: u8,
+        yslot: Option<u8>,
+        serial: Option<u32>,
     },
     #[cfg(feature = "file")]
     File {

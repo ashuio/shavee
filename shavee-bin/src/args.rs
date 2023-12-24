@@ -100,7 +100,10 @@ impl CliArgs {
                     .env(SHAVEE_YUBIKEY)
                     .long("yubi")
                     .short('y')
-                    .num_args(0)
+                    .num_args(0..=1)
+                    .value_name("Yubikey Serial")
+                    .value_parser(clap::value_parser!(u32))
+                    .default_missing_value(None)
                     .help("Use Yubikey HMAC as second factor")
                     .required(false)
                     .hide(!cfg!(feature = "yubikey")) // hide it in help if feature is disabled
@@ -114,6 +117,7 @@ impl CliArgs {
                     .long("slot")
                     .help("Yubikey HMAC Slot")
                     .value_name("HMAC slot")
+                    .default_missing_value("2")
                     .default_value("2")
                     .value_parser(PossibleValuesParser::new(YUBI_SLOTS.iter()))
                     .hide(!cfg!(feature = "yubikey")) // hide it in help if feature is disabled
@@ -246,7 +250,7 @@ impl CliArgs {
 
         // The port arguments are <u16> or None (not entered by user)
         #[cfg(feature = "file")]
-        let port: Option<&u16> = arg.get_one("port");
+        let port = arg.get_one::<u16>("port");
         #[cfg(feature = "file")]
         let port = match port {
             Some(p) => {
@@ -262,14 +266,18 @@ impl CliArgs {
         // The accepted slot arguments are Some (1 or 2) or None (not entered by user)
         // Default value if not entered is 2
         #[cfg(feature = "yubikey")]
-        let yslot: Option<&String> = arg.get_one("slot");
-        #[cfg(feature = "yubikey")]
+        let yslot = arg.get_one::<String>("slot");
         let yslot = match yslot {
-            Some(s) => s.to_owned(),
-            None => 2.to_string(),
+            Some(s) => Some(s.to_owned().parse::<u8>().unwrap()),
+            None => None,
         };
-        #[cfg(feature = "yubikey")]
-        let yslot: u8 = yslot.parse::<u8>().expect("Invalid Port!");
+
+        let yubiserial: Option<&u32> = arg.get_one("yubikey");
+
+        let yubiserial = match yubiserial {
+            Some(s) => Some(s.to_owned()),
+            None => None,
+        };
 
         let operation = if cmdpresent(&arg, "create") {
             Operations::Create { datasets }
@@ -324,10 +332,10 @@ impl CliArgs {
                     "Yubikey feature is disabled at compile.",
                 ));
             }
-            #[cfg(feature = "yubikey")]
-            {
-                second_factor = TwoFactorMode::Yubikey { yslot };
-            }
+            second_factor = TwoFactorMode::Yubikey {
+                yslot,
+                serial: yubiserial,
+            };
         };
 
         #[cfg(feature = "file")]

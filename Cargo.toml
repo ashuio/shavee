@@ -3,7 +3,7 @@ members = ["shavee-bin", "shavee-pam", "shavee-core"]
 resolver = "2"
 
 [workspace.package]
-version = "1.0.0"
+version = "1.0.1"
 authors = ["Ashutosh Verma <shavee@ashu.io>"]
 edition = "2021"
 license = "MIT"

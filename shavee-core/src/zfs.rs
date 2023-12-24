@@ -17,6 +17,8 @@ pub enum ZfsShaveeProperties {
     #[cfg(feature = "yubikey")]
     #[strum(serialize = "com.github.shavee:yubislot")]
     YubikeySlot,
+    #[strum(serialize = "com.github.shavee:yubikeyserial")]
+    YubikeySerial,
     #[cfg(feature = "file")]
     #[strum(serialize = "com.github.shavee:filepath")]
     FilePath,
@@ -93,11 +95,22 @@ impl Dataset {
         let mut filesize = String::from("-");
         #[cfg(feature = "yubikey")]
         let mut yubislot = String::from("-");
+        #[cfg(feature = "yubikey")]
+        let mut yubiserial = String::from("-");
 
         let secondfactor = match args {
             #[cfg(feature = "yubikey")]
-            TwoFactorMode::Yubikey { yslot } => {
-                yubislot = String::from(yslot.to_string());
+            TwoFactorMode::Yubikey { yslot, serial } => {
+                yubislot = match yslot {
+                    Some(s) => s.to_string(),
+                    None => 2.to_string(),
+                };
+
+                match serial {
+                    Some(serial) => yubiserial = serial.to_string(),
+                    None => {}
+                };
+
                 String::from("Yubikey")
             }
             #[cfg(feature = "file")]
@@ -150,6 +163,10 @@ impl Dataset {
                     property: p,
                     value: Some(crate_version!().to_string()),
                 }),
+                ZfsShaveeProperties::YubikeySerial => properties.push(DatasetProperty {
+                    property: p,
+                    value: Some(yubiserial.to_string()),
+                }),
             }
         }
 
@@ -171,6 +188,7 @@ impl Dataset {
         let mut secondfactor = String::new();
         #[cfg(feature = "yubikey")]
         let mut yubislot = String::new();
+        let mut serial = String::new();
 
         for i in input {
             match i.value {
@@ -196,6 +214,9 @@ impl Dataset {
                     ZfsShaveeProperties::YubikeySlot => {
                         yubislot = s;
                     }
+                    ZfsShaveeProperties::YubikeySerial => {
+                        serial = s;
+                    }
                 },
                 None => {}
             }
@@ -210,7 +231,19 @@ impl Dataset {
 
             #[cfg(feature = "yubikey")]
             let out = TwoFactorMode::Yubikey {
-                yslot: yubislot.parse::<u8>().expect("Invalid Yubikey Slot"),
+                yslot: {
+                    match yubislot.parse::<u8>() {
+                        Ok(slot) => Some(slot),
+                        Err(_) => None,
+                    }
+                },
+
+                serial: {
+                    match serial.parse::<u32>() {
+                        Ok(serial) => Some(serial),
+                        Err(_) => None,
+                    }
+                },
             };
             #[cfg(feature = "yubikey")]
             let result = Ok(out);
@@ -653,10 +686,10 @@ impl Dataset {
 
     pub fn unloadkeys_recursive(&self) -> Result<Self, std::io::Error> {
         let command_output = Command::new("zfs")
-        .arg("unload-key")
-        .arg("-r")
-        .arg(&self.dataset)
-        .output()?;
+            .arg("unload-key")
+            .arg("-r")
+            .arg(&self.dataset)
+            .output()?;
 
         if !command_output.status.success() {
             crate::error("Command failed!");

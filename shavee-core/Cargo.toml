@@ -19,18 +19,18 @@ yubikey = []                  # Yubikey feature
 file = []   
 
 [dependencies]
-yubico_manager = "0.9.0"
-curl = "0.4.44"
-argon2 = "0.5.2"
+yubico_manager = {path = "../../yubico-manager",package = "yubico_manager",version = "*"}
+curl = "0.4"
+argon2 = "0.5"
 base64 = "0.21.5"
 clap = { version = "4", features = ["cargo"] }
-rand = "0.8.5"
-log = { version = "0.4.20", optional = true }
-env_logger = { version = "0.10.1", optional = true }
-strum = "0.25.0"
-strum_macros = "0.25.3"
+rand = "0.8"
+log = { version = "0.4", optional = true }
+env_logger = { version = "0.10", optional = true }
+strum = "0.25"
+strum_macros = "0.25"
 
 [dev-dependencies]
 tempfile = "3.4"
 nix = "0.26.4"
-random-string = "1.0.0"
+random-string = "1.0"
