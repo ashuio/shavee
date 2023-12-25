@@ -734,6 +734,23 @@ pub fn resolve_recursive(datasets: Vec<Dataset>) -> Result<Vec<Dataset>, std::io
     Ok(sets)
 }
 
+pub fn get_max_namesize(datasets: Vec<Dataset>) -> usize {
+    if datasets.is_empty() {
+        return 0;
+    }
+
+    let mut maxlength: usize = 0;
+
+    for set in datasets {
+        let len = set.dataset.len();
+        if maxlength < len {
+            maxlength = len;
+        }
+    }
+
+    maxlength
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

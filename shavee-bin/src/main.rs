@@ -4,7 +4,7 @@ use atty::Stream;
 #[cfg(feature = "file")]
 use shavee_core::filehash::get_filehash;
 use shavee_core::yubikey::{fetch_yubikeys, yubikey_get_hash};
-use shavee_core::zfs::Dataset;
+use shavee_core::zfs::{get_max_namesize, Dataset};
 use shavee_core::{structs::TwoFactorMode, zfs::resolve_recursive};
 use std::collections::HashMap;
 use std::io::stdin;
@@ -74,15 +74,9 @@ async fn run(args: CliArgs) -> Result<Option<String>, Box<dyn std::error::Error>
                     sets = resolve_recursive(datasets)?;
                 }
 
-                let mut maxlength: usize = 0;
+                let maxlength = get_max_namesize(sets.clone());
 
-                for d in sets.clone() {
-                    let len = d.to_string().len();
-                    if len > maxlength {
-                        maxlength = len;
-                    }
-                }
-
+                // fetch all available Yubikeys
                 let yubikeys = fetch_yubikeys();
 
                 let sethashes = get_key_hash(sets.clone(), password, yubikeys, None).await?;
@@ -125,17 +119,7 @@ async fn run(args: CliArgs) -> Result<Option<String>, Box<dyn std::error::Error>
                 if recursive {
                     sets = resolve_recursive(datasets)?;
                 }
-                let mut maxlength: usize = 0;
-                if printwithname {
-                    for d in sets.clone() {
-                        let len = d.to_string().len();
-                        if len > maxlength {
-                            maxlength = len;
-                        }
-                    }
-                    println!("\x1b[1m{:<maxlength$}    {}\x1b[0m", "Dataset", "Key");
-                    println!();
-                }
+                let maxlength = get_max_namesize(sets.clone());
 
                 let mut setnames: Vec<String> = vec![];
 
@@ -148,6 +132,10 @@ async fn run(args: CliArgs) -> Result<Option<String>, Box<dyn std::error::Error>
                 let sethashes = get_key_hash(sets.clone(), password, yubikeys, None).await?;
 
                 let mut errors: Vec<(String, String)> = vec![];
+                if printwithname {
+                    println!("\x1b[1m{:<maxlength$}    {}\x1b[0m", "Dataset", "Key");
+                    println!();
+                }
                 for dataset in setnames {
                     let pass = sethashes.get(&dataset).unwrap();
                     if pass.len() == 86 {
@@ -276,14 +264,7 @@ async fn run(args: CliArgs) -> Result<Option<String>, Box<dyn std::error::Error>
                     if recursive {
                         sets = resolve_recursive(sets)?;
                     }
-                    let mut maxlength: usize = 0;
-
-                    for d in sets.clone() {
-                        let len = d.to_string().len();
-                        if len > maxlength {
-                            maxlength = len;
-                        }
-                    }
+                    let maxlength = get_max_namesize(sets.clone());
 
                     let yubikeys = fetch_yubikeys();
 
@@ -330,17 +311,7 @@ async fn run(args: CliArgs) -> Result<Option<String>, Box<dyn std::error::Error>
                     if recursive {
                         sets = resolve_recursive(datasets)?;
                     }
-                    let mut maxlength: usize = 0;
-                    if printwithname {
-                        for d in sets.clone() {
-                            let len = d.to_string().len();
-                            if len > maxlength {
-                                maxlength = len;
-                            }
-                        }
-                        println!("\x1b[1m{:<maxlength$}    {}\x1b[0m", "Dataset", "Key");
-                        println!();
-                    }
+                    let maxlength = get_max_namesize(sets.clone());
 
                     let mut setnames: Vec<String> = vec![];
 
@@ -353,6 +324,10 @@ async fn run(args: CliArgs) -> Result<Option<String>, Box<dyn std::error::Error>
                         get_key_hash(sets.clone(), password, yubikeys, Some(args.second_factor))
                             .await?;
                     let mut errors: Vec<(String, String)> = vec![];
+                    if printwithname {
+                        println!("\x1b[1m{:<maxlength$}    {}\x1b[0m", "Dataset", "Key");
+                        println!();
+                    }
                     for dataset in setnames {
                         let pass = sethashes.get(&dataset).unwrap();
                         if pass.len() == 86 {

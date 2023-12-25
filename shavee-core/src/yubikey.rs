@@ -7,14 +7,12 @@ pub fn yubikey_get_hash(
     slot: Option<u8>,
     salt: &[u8],
     yubikey: Arc<Mutex<Yubikey>>,
-) -> Result<Vec<u8>,Box<dyn std::error::Error>> {
-
+) -> Result<Vec<u8>, Box<dyn std::error::Error>> {
     let mut yubi = Yubico::new();
     // Search for Yubikey
 
-    let challenge = crate::password::hash_argon2(&password, &salt)
-        .expect("Hash error"); // Prepare Challenge
-    
+    let challenge = crate::password::hash_argon2(&password, &salt).expect("Hash error"); // Prepare Challenge
+
     let yslot = if slot == Some(1) {
         Slot::Slot1
     } else {
@@ -30,8 +28,7 @@ pub fn yubikey_get_hash(
     let hmac_result = yubi.challenge_response_hmac(&challenge, config)?;
     drop(key);
     let hash = hmac_result.0.to_vec(); // Prepare and return encryption key as hex string
-    let finalhash =
-        crate::password::hash_argon2(&hash[..], &salt).expect("File Hash Error");
+    let finalhash = crate::password::hash_argon2(&hash[..], &salt).expect("File Hash Error");
     Ok(finalhash) // Return the finalhash
 }
 
