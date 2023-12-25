@@ -102,7 +102,8 @@ impl CliArgs {
                     .short('y')
                     .num_args(0..=1)
                     .value_name("Yubikey Serial")
-                    .value_parser(clap::value_parser!(u32))
+                    // .value_parser(clap::value_parser!(u32))
+                    .value_parser(clap::builder::ValueParser::new(yubikey_serial_parser))
                     .default_missing_value(None)
                     .help("Use Yubikey HMAC as second factor")
                     .required(false)
@@ -366,6 +367,26 @@ fn cmdpresent(args: &ArgMatches, cmd: &str) -> bool {
     };
 
     false
+}
+
+fn yubikey_serial_parser(serial: &str) -> Result<u32, std::io::Error> {
+    if serial.len() != 8 {
+        return Err(std::io::Error::new(
+            std::io::ErrorKind::InvalidInput,
+            "Inavlid Serial Length",
+        ));
+    }
+    let serial = match serial.parse::<u32>() {
+        Ok(s) => s,
+        Err(_) => {
+            return Err(std::io::Error::new(
+                std::io::ErrorKind::InvalidInput,
+                "Inavlid Serial",
+            ))
+        }
+    };
+
+    Ok(serial)
 }
 // This section implements unit tests for the functions in this module.
 // Any code change in this module must pass unit tests below.

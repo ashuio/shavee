@@ -96,7 +96,7 @@ Modes
 
 Flags/Options
 
-* `-y` : Use Yubikey for 2FA
+* `-y` : Use Yubikey for 2FA. Optionally takes in yubikey serial number.
 * `-f` : Use any file as 2FA, takes filepath or a HTTP(S) location as an argument.
 * `-p` : Prints out the secret key.
 * `-d` : Adds dataset name to print output.
@@ -130,6 +130,12 @@ shavee -c -z <zfs dataset path>
 
 ```bash
 shavee -y -c -z zroot/data/home/hunter zroot/data/home/hunter2
+```
+
+Or to use a specific key eneter it's serial number
+
+```bash
+shavee -y 12345678 -c -z zroot/data/home/hunter zroot/data/home/hunter2
 ```
 
 Here we use Yubikey as our second factor. (Can be omitted for password only auth) and operate on TWO datasets together.
