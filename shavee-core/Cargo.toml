@@ -22,7 +22,7 @@ file = []
 yubico_manager = {path = "../../yubico-manager",package = "yubico_manager",version = "*"}
 curl = "0.4"
 argon2 = "0.5"
-base64 = "0.21.5"
+base64 = "0.21"
 clap = { version = "4", features = ["cargo"] }
 rand = "0.8"
 log = { version = "0.4", optional = true }
@@ -32,5 +32,5 @@ strum_macros = "0.25"
 
 [dev-dependencies]
 tempfile = "3.4"
-nix = "0.26.4"
+nix = "0.26"
 random-string = "1.0"

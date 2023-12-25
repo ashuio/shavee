@@ -3,14 +3,13 @@ use args::*;
 use atty::Stream;
 #[cfg(feature = "file")]
 use shavee_core::filehash::get_filehash;
+use shavee_core::yubikey::{fetch_yubikeys, yubikey_get_hash};
 use shavee_core::zfs::Dataset;
 use shavee_core::{structs::TwoFactorMode, zfs::resolve_recursive};
 use std::collections::HashMap;
 use std::io::stdin;
 use std::sync::{Arc, Mutex};
-
-use yubico_manager::config::{Config, Mode, Slot};
-use yubico_manager::Yubico;
+use yubico_manager::{Yubico, Yubikey};
 
 /// main() collect the arguments from command line, pass them to run() and print any
 /// messages upon exiting the program
@@ -58,7 +57,7 @@ async fn run(args: CliArgs) -> Result<Option<String>, Box<dyn std::error::Error>
     // prompt user for password, in case of an error, terminate this function and
     // return the error to main()
 
-    shavee_core::trace("Password has entered successfully.");
+    shavee_core::trace("Password has been entered successfully.");
 
     shavee_core::trace("Operation Mode:");
 
@@ -84,19 +83,7 @@ async fn run(args: CliArgs) -> Result<Option<String>, Box<dyn std::error::Error>
                     }
                 }
 
-                let fetched_keys = match Yubico::new().find_all_yubikeys() {
-                    Ok(keys) => keys,
-                    Err(_) => Vec::new(),
-                };
-
-                let mut keys = Vec::new();
-
-                for key in fetched_keys {
-                    let k = Arc::new(Mutex::new(key));
-                    keys.push(k);
-                }
-
-                let yubikeys = Arc::new(keys);
+                let yubikeys = fetch_yubikeys();
 
                 let sethashes = get_key_hash(sets.clone(), password, yubikeys, None).await?;
                 let mut errors: Vec<(String, String)> = vec![];
@@ -156,19 +143,7 @@ async fn run(args: CliArgs) -> Result<Option<String>, Box<dyn std::error::Error>
                     setnames.push(set.to_string())
                 }
 
-                let fetched_keys = match Yubico::new().find_all_yubikeys() {
-                    Ok(keys) => keys,
-                    Err(_) => Vec::new(),
-                };
-
-                let mut keys = Vec::new();
-
-                for key in fetched_keys {
-                    let k = Arc::new(Mutex::new(key));
-                    keys.push(k);
-                }
-
-                let yubikeys = Arc::new(keys);
+                let yubikeys = fetch_yubikeys();
 
                 let sethashes = get_key_hash(sets.clone(), password, yubikeys, None).await?;
 
@@ -246,9 +221,12 @@ async fn run(args: CliArgs) -> Result<Option<String>, Box<dyn std::error::Error>
                                 } else {
                                     Yubico::new().find_yubikey_from_serial(serial.unwrap())
                                 }?;
+
+                                let yubikey = Arc::new(Mutex::new(yubikey));
+
                                 dataset.clone().yubi_create(
                                     password.as_bytes(),
-                                    yslot.unwrap_or(2),
+                                    yslot,
                                     yubikey,
                                     &salt,
                                 )?;
@@ -307,19 +285,7 @@ async fn run(args: CliArgs) -> Result<Option<String>, Box<dyn std::error::Error>
                         }
                     }
 
-                    let fetched_keys = match Yubico::new().find_all_yubikeys() {
-                        Ok(keys) => keys,
-                        Err(_) => Vec::new(),
-                    };
-
-                    let mut keys = Vec::new();
-
-                    for key in fetched_keys {
-                        let k = Arc::new(Mutex::new(key));
-                        keys.push(k);
-                    }
-
-                    let yubikeys = Arc::new(keys);
+                    let yubikeys = fetch_yubikeys();
 
                     let sethashes =
                         get_key_hash(sets.clone(), password, yubikeys, Some(args.second_factor))
@@ -382,20 +348,7 @@ async fn run(args: CliArgs) -> Result<Option<String>, Box<dyn std::error::Error>
                         setnames.push(set.to_string())
                     }
 
-                    let fetched_keys = match Yubico::new().find_all_yubikeys() {
-                        Ok(keys) => keys,
-                        Err(_) => Vec::new(),
-                    };
-
-                    let mut keys = Vec::new();
-
-                    for key in fetched_keys {
-                        let k = Arc::new(Mutex::new(key));
-                        keys.push(k);
-                    }
-
-                    let yubikeys = Arc::new(keys);
-
+                    let yubikeys = fetch_yubikeys();
                     let sethashes =
                         get_key_hash(sets.clone(), password, yubikeys, Some(args.second_factor))
                             .await?;
@@ -440,7 +393,7 @@ async fn run(args: CliArgs) -> Result<Option<String>, Box<dyn std::error::Error>
 async fn get_key_hash(
     datasets: Vec<Dataset>,
     password: String,
-    yubikeys: Arc<Vec<Arc<Mutex<yubico_manager::Yubikey>>>>,
+    yubikeys: Arc<[Arc<Mutex<Yubikey>>]>,
     second_factor: Option<TwoFactorMode>,
 ) -> Result<HashMap<String, String>, Box<dyn std::error::Error>> {
     let mut sethashes: HashMap<String, String> = HashMap::new();
@@ -467,7 +420,7 @@ fn get_keys(
     dataset: Dataset,
     password: String,
     second_factor: Option<TwoFactorMode>,
-    yubikeys: Arc<Vec<Arc<Mutex<yubico_manager::Yubikey>>>>,
+    yubikeys: Arc<[Arc<Mutex<Yubikey>>]>,
 ) -> Result<[String; 2], (String, Box<dyn std::error::Error + Send>)> {
     let salt = match shavee_core::logic::get_salt(Some(&dataset)) {
         Ok(salt) => salt,
@@ -497,13 +450,7 @@ fn get_keys(
     let passphrase = match second_factor {
         #[cfg(feature = "yubikey")]
         TwoFactorMode::Yubikey { yslot, serial } => {
-            let mut yubi = Yubico::new();
-            // Search for Yubikey
-
-            let challenge = shavee_core::password::hash_argon2(&password.as_bytes(), &salt)
-                .expect("Hash error"); // Prepare Challenge
-
-            let yubikey = if serial.is_some() && !yubikeys.is_empty() {
+            let yubikey = if !yubikeys.is_empty() && serial.is_some() {
                 match shavee_core::yubikey::yubikey_get_from_serial(yubikeys, serial.unwrap()) {
                     Ok(ok) => ok,
                     Err(_) => {
@@ -526,29 +473,15 @@ fn get_keys(
                 }
             };
 
-            let yubihash = {
-                let yslot = if yslot == Some(1) {
-                    Slot::Slot1
-                } else {
-                    Slot::Slot2
-                };
-
-                let key = yubikey.lock().unwrap();
-                let config = Config::new_from(key.clone()) // Configure Yubikey
-                    .set_variable_size(false)
-                    .set_mode(Mode::Sha1)
-                    .set_slot(yslot);
-
-                let hmac_result = yubi.challenge_response_hmac(&challenge, config);
-                drop(key);
-                let hmac_result = match hmac_result {
-                    Ok(y) => y,
-                    Err(error) => return Err((dataset.to_string(), Box::new(error))),
-                };
-                let hash = hmac_result.0.to_vec(); // Prepare and return encryption key as hex string
-                let finalhash =
-                    shavee_core::password::hash_argon2(&hash[..], &salt).expect("File Hash Error");
-                finalhash // Return the finalhash
+            let yubihash = match yubikey_get_hash(password.as_bytes(), yslot, &salt, yubikey) {
+                Ok(ok) => ok,
+                Err(e) => {
+                    let e = Box::new(std::io::Error::new(
+                        std::io::ErrorKind::Other,
+                        e.to_string(),
+                    ));
+                    return Err((dataset.to_string(), e));
+                }
             };
 
             base64::Engine::encode(&shavee_core::logic::BASE64_ENGINE, yubihash)

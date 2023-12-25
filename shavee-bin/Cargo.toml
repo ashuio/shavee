@@ -17,7 +17,7 @@ yubikey = []                  # Yubikey feature
 file = []                     # File 2FA feature
 
 [dependencies]
-shavee_core = { package = "shavee_core", path = "../shavee-core", version = "1.0.0"}
+shavee_core = { package = "shavee_core", path = "../shavee-core", version = "1.0.1"}
 rpassword = "7.3"
 base64 = "0.21"
 atty = "0.2"

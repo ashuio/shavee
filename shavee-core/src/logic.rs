@@ -1,7 +1,10 @@
 use crate::{password, yubikey::*, zfs::*};
 use base64;
 use rand::{self, RngCore};
-use std::error::Error;
+use std::{
+    error::Error,
+    sync::{Arc, Mutex},
+};
 use yubico_manager::Yubikey;
 
 pub const BASE64_ENGINE: base64::engine::GeneralPurpose = base64::engine::GeneralPurpose::new(
@@ -15,15 +18,15 @@ impl Dataset {
     pub fn yubi_create(
         self,
         passphrase: &[u8],
-        yubi_slot: u8,
-        yubikey: Yubikey,
+        yubi_slot: Option<u8>,
+        yubikey: Arc<Mutex<Yubikey>>,
         salt: &[u8],
     ) -> Result<(), Box<dyn Error>> {
         crate::trace(&format!(
             "Creating ZFS \"{:?}\" dataset with Yubikey 2FA.",
             self
         ));
-        let passphrase = yubi_key_calculation(passphrase, yubikey, yubi_slot, salt)?;
+        let passphrase = yubi_key_calculation(passphrase, yubi_slot, salt, yubikey)?;
         self.create(&passphrase)?;
         crate::trace("Dataset was created successfully!");
         // Store the in the ZFS dataset property as base64 encoded
@@ -54,12 +57,12 @@ impl Dataset {
 /// Generates ZFS dataset passphrase based on yubikey 2FA
 pub fn yubi_key_calculation(
     pass: &[u8],
-    yubikey: Yubikey,
-    yubi_slot: u8,
+    yubi_slot: Option<u8>,
     salt: &[u8],
+    yubikey: std::sync::Arc<Mutex<Yubikey>>,
 ) -> Result<String, Box<dyn Error>> {
     crate::trace("Calculating passphrase key using Yubikey.");
-    let key = yubikey_get_hash(pass, yubikey, yubi_slot, salt)?;
+    let key = yubikey_get_hash(pass, yubi_slot, salt, yubikey)?;
     Ok(base64::Engine::encode(&BASE64_ENGINE, key))
 }
 
