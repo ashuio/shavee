@@ -1,6 +1,7 @@
 # shavee
 
 <!-- ![rust workflow](https://github.com/ashuio/shavee/actions/workflows/rust.yml/badge.svg) -->
+
 [![GitHub license](https://img.shields.io/badge/license-MIT-blue)](https://github.com/ashuio/shavee/blob/master/LICENSE)
 
 shavee is a simple program and a pam module to automatically decrypt and mount encrypted ZFS user home directories using Yubikey HMAC or a Simple USB drive as 2FA written in rust.
@@ -8,6 +9,7 @@ shavee is a simple program and a pam module to automatically decrypt and mount e
 **NOTE: Shavee v1.0.0 and greater are NOT backwards compatible with Datasets created with earlier versions. See [Migration Guide.](MIGRATION.md)**
 
 ## Supported methods
+
 This program currently supports two methods for 2FA:
 
 ### 1. Yubikey
@@ -20,10 +22,13 @@ Programmed HMAC secret in the Yubikey CANNOT be extracted once programmed in.
 
 If you want to use Multiple keys on the same dataset (eg. backup keys) it is required for you to program SAME fresh HMAC secrets on all those keys.
 
+NOTE: You will need to use the manual unlock options if you want to use a diffrent key as auto mode looks for keys by serial.
+
 Yubikey mode is set with the `-y` flag.
 
-In this mode the program looks for a Yubikey on login and uses it's HMAC mode along with your password to derive the final encryption key.
+If diffrent datasets require diffrent keys you can plug all of them together.
 
+In this mode the program looks for a Yubikey on login and uses it's HMAC mode along with your password to derive the final encryption key.
 
 Yubikey HMAC Slot can be set with the `-s` flag, defaults to SLOT 2
 
@@ -33,13 +38,16 @@ In this mode the program looks for a file (can be any file) and use that along w
 
 File mode is set using the `-f <path to file>` option.
 
-File can be a local file, a http(s) or a sftp location 
+File can be a local file, a http(s) or a sftp location
 
 Example HTTPS
+
 ```bash
 shavee -f https://foo.org/secret.png
 ```
+
 Exmaple SFTP
+
 ```bash
 shavee -f sftp://user@foo.org/mnt/secretfile -P 4242
 ```
@@ -47,6 +55,7 @@ shavee -f sftp://user@foo.org/mnt/secretfile -P 4242
 `-P` Option Sets port for both HTTP and SFTP.
 
 Exmaple Local File
+
 ```bash
 shavee -f /mnt/usb/secret.png
 ```
@@ -56,6 +65,7 @@ The idea with this method is to keep the file on a USB storage device or a Netor
 You can use any pre existing file of your choice.
 
 Or create one using
+
 ```bash
 dd if=/dev/uranson of=./secretfile bs=4096 count=4096
 ```
@@ -67,46 +77,55 @@ dd if=/dev/uranson of=./secretfile bs=4096 count=4096
 If no second factor is specified the program will use only password as a single factor.
 
 ## Build and Install
+
 1. Install [Rust](https://www.rust-lang.org/tools/install)
-2. Clone repo using 
-```bash 
-git clone https://github.com/ashuio/shavee.git 
-```
-   * [Optional] Enable or diasable `yubikey` and `file` feature by modifying `shavee-bin` [`Cargo.toml`](https://github.com/ashuio/shavee/blob/master/shavee-bin/Cargo.toml) to include or remove those features from the compiled binary.
-   * [Optional] Enable or disable verbose debug `trace` logs by modifying `shavee-core` [`Cargo.toml`](https://github.com/ashuio/shavee/blob/master/shavee-core/Cargo.toml) to include or remove that feature from the compiled binary.
-     * If `trace` log feature is enabled, `RUST_LOG=trace` environment variable must also be set to generate logs. Otherwise no log will be generaged.
-    **NOTE: Enabling the trace logs, will increase the binary size and may expose the passphrase in the output logs. ONLY ENABLE IT FOR DEBUGGING PURPOSE AND DISABLE IT IN THE FINAL BINARY!**
-3. Build using the binary
+2. Clone repo using
+
 ```bash
-cargo build --release 
+git clone https://github.com/ashuio/shavee.git
 ```
-4. Place the binary in your bin directory with 
+
+- [Optional] Enable or diasable `yubikey` and `file` feature by modifying `shavee-bin` [`Cargo.toml`](https://github.com/ashuio/shavee/blob/master/shavee-bin/Cargo.toml) to include or remove those features from the compiled binary.
+- [Optional] Enable or disable verbose debug `trace` logs by modifying `shavee-core` [`Cargo.toml`](https://github.com/ashuio/shavee/blob/master/shavee-core/Cargo.toml) to include or remove that feature from the compiled binary.
+  - If `trace` log feature is enabled, `RUST_LOG=trace` environment variable must also be set to generate logs. Otherwise no log will be generaged.
+    **NOTE: Enabling the trace logs, will increase the binary size and may expose the passphrase in the output logs. ONLY ENABLE IT FOR DEBUGGING PURPOSE AND DISABLE IT IN THE FINAL BINARY!**
+
+3. Build using the binary
+
+```bash
+cargo build --release
+```
+
+4. Place the binary in your bin directory with
+
 ```bash
 sudo cp target/release/shavee /usr/bin
 ```
+
 5. Place Pam module in your module directory with
+
 ```bash
  sudo cp target/release/libshavee_pam.so /usr/lib/security/
 ```
 
 Modes
 
-* Shavee PAM Module  : shavee PAM module to unlock home dir on login
-* Shavee Binary : Admin function for dataset management using shavee
+- Shavee PAM Module : shavee PAM module to unlock home dir on login
+- Shavee Binary : Admin function for dataset management using shavee
 
 Flags/Options
 
-* `-y` : Use Yubikey for 2FA. Optionally takes in yubikey serial number.
-* `-f` : Use any file as 2FA, takes filepath or a HTTP(S) location as an argument.
-* `-p` : Prints out the secret key.
-* `-d` : Adds dataset name to print output.
-* `-P` : Set port for HTTP and SFTP requests (Upper case P )
-* `-s` : Set Yubikey HMAC Slot (Can be either 1 or 2)
-* `-c` : Create/Change key of ZFS dataset with the derived encryption key
-* `-m` : Unlocks and Mounts the ZFS Dataset.
-* `-r` : Perform Operations Recursively to all child datasets.
-* `-a` : Automatically Detect Dataset Unlock Properties ( can only be used with `Print` and `Mount` )
-* `-z` : ZFS Dataset(s) to operate on. ( can take multiple options )
+- `-y` : Use Yubikey for 2FA. Optionally takes in yubikey serial number or uses the first key
+- `-f` : Use any file as 2FA, takes filepath or a HTTP(S) location as an argument.
+- `-p` : Prints out the secret key.
+- `-d` : Adds dataset name to print output.
+- `-P` : Set port for HTTP and SFTP requests (Upper case P )
+- `-s` : Set Yubikey HMAC Slot (Can be either 1 or 2)
+- `-c` : Create/Change key of ZFS dataset with the derived encryption key
+- `-m` : Unlocks and Mounts the ZFS Dataset.
+- `-r` : Perform Operations Recursively to all child datasets.
+- `-a` : Automatically Detect Dataset Unlock Properties ( can only be used with `Print` and `Mount` )
+- `-z` : ZFS Dataset(s) to operate on. ( can take multiple options )
 
 **NOTE: The `-y` (Yubikey mode) flag and the `-f <path to file>` (File mode) option are interchangeable.**
 
@@ -155,8 +174,8 @@ Example
 ```bash
 sudo shavee -f /mnt/usb/secretfile -c -z zroot/data/home/hunter
 ```
-Here we use a FILE for our second factor (Can be omitted for password auth only)
 
+Here we use a FILE for our second factor (Can be omitted for password auth only)
 
 ## Use shavee to unlock and mount any zfs patition
 
@@ -177,7 +196,8 @@ To backup the key simply use the `-p` option to print the secret key to stdout
 ```bash
 shavee -p -y -z zroot/data/home/hunter/secrets
 ```
-**NOTE: Secret Keys are unique to your dataset even if you use the same password for multiple datasets.** 
+
+**NOTE: Secret Keys are unique to your dataset even if you use the same password for multiple datasets.**
 
 ## Use in Scripts
 
@@ -190,6 +210,7 @@ echo "hunter2" | shavee -y -m -z zroot/data/home/hunter/secrets
 ```
 
 Here "hunter2" will be treated as the password
+
 ## Use a USB Drive instead of a Yubikey
 
 You can use the `-f` option instead of the `-y` flag to substitute a Yubikey with any USB Drive.
@@ -197,17 +218,20 @@ You can use the `-f` option instead of the `-y` flag to substitute a Yubikey wit
 Auto mount the USB so shavee can find the required keyfile on login
 
 **We can use `udev` for this, simply create and add the following to `/etc/udev/rules.d/99-usb-automount.rules`**
+
 ```
 ACTION=="add", SUBSYSTEMS=="usb", SUBSYSTEM=="block", ENV{ID_FS_UUID}=="<UUID of partition>", RUN{program}+="/usr/bin/systemd-mount --no-block --automount=yes --collect $devnode <Desired Mount point>"
 ```
+
 **Example**
 
 ```
 ACTION=="add", SUBSYSTEMS=="usb", SUBSYSTEM=="block", ENV{ID_FS_UUID}=="ADB0-DA9C", RUN{program}+="/usr/bin/systemd-mount --no-block --automount=yes --collect $devnode /media/usb"
 ```
+
 Here we're mounting the first partition of the usb disk to `/media/usb`
 
-You can get the UUID by running 
+You can get the UUID by running
 
 ```bash
 udevadm info --query=all --name=<Target disk> | grep ID_FS_UUID=
@@ -218,8 +242,8 @@ Example
 ```bash
 udevadm info --query=all --name=/dev/sdb1 | grep ID_FS_UUID=
 ```
-Run `udevadm control --reload-rules` after to make sure new rules are loaded.
 
+Run `udevadm control --reload-rules` after to make sure new rules are loaded.
 
 ## Use shavee with PAM to auto unlock homedir
 
@@ -230,24 +254,27 @@ simply add the following line to your desired pam login method file.
 In our example we will be adding it to **/etc/pam.d/sddm** to handle graphical logins and **/etc/pam.d/login** to handle CLI logins.
 
 **Add the following line to you pam config file**
+
 ```
 auth       optional    libshavee_pam.so <Base home Dataset>
 session    optional    libshavee_pam.so <Base home Dataset>
 ```
 
 **Example**
+
 ```
 auth       optional    libshavee_pam.so zroot/data/home
 session    optional    libshavee_pam.so zroot/data/home
-``` 
+```
+
 Where `zroot/data/home` mounts to `/home`
 
 NOTE: PAM module unlocks and mounts datasets recursively, any failure in any dataset will result in Failed Auth. This shold not stop you from logging in if PAM module is set to `optional` like we did in the Example.
 
 To Force fail auth on dataset mount failure change it from `optional` to `required`
 
- 
 ## Dual home directories in ZFS
+
 Since ZFS mounts datasets OVER preexisting directories and we defined our module in PAM as optional we still get authenticated with JUST the pass even though our dataset is NOT decrypted (eg. Because Yubikey was not inserted).
 
 We can use this to our advantage and essentially have TWO home directories.
