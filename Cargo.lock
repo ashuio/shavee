@@ -1178,6 +1178,7 @@ checksum = "ed94fce61571a4006852b7389a063ab983c02eb1bb37b47f8272ce92d06d9538"
 [[package]]
 name = "yubico_manager"
 version = "0.10.0"
+source = "git+https://github.com/ashuio/yubico-manager#ee12b9d7280c22e6095db1e727307524bdb4b558"
 dependencies = [
  "aes",
  "bitflags 2.4.1",
