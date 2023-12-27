@@ -1,6 +1,7 @@
 use clap::crate_version;
 use std::io::prelude::*;
 use std::process::Command;
+use std::sync::Arc;
 use strum::IntoEnumIterator;
 use strum_macros::{Display, EnumIter};
 
@@ -722,26 +723,26 @@ impl Dataset {
     }
 }
 
-pub fn resolve_recursive(datasets: Vec<Dataset>) -> Result<Vec<Dataset>, std::io::Error> {
+pub fn resolve_recursive(datasets: &Arc<[Dataset]>) -> Result<Arc<[Dataset]>, std::io::Error> {
     let mut sets: Vec<Dataset> = Vec::new();
 
-    for set in datasets {
+    for set in datasets.iter() {
         let a = set.list()?;
         for d in a {
-            sets.push(d.clone());
+            sets.push(d);
         }
     }
-    Ok(sets)
+    Ok(sets.into())
 }
 
-pub fn get_max_namesize(datasets: Vec<Dataset>) -> usize {
+pub fn get_max_namesize(datasets: &Arc<[Dataset]>) -> usize {
     if datasets.is_empty() {
         return 0;
     }
 
     let mut maxlength: usize = 0;
 
-    for set in datasets {
+    for set in datasets.iter() {
         let len = set.dataset.len();
         if maxlength < len {
             maxlength = len;

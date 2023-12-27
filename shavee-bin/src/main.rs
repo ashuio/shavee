@@ -69,19 +69,18 @@ async fn run(args: CliArgs) -> Result<Option<String>, Box<dyn std::error::Error>
                 datasets,
                 recursive,
             } => {
-                let mut sets = datasets.clone();
+                let mut sets: Arc<[Dataset]> = datasets;
                 if recursive {
-                    sets = resolve_recursive(datasets)?;
+                    sets = resolve_recursive(&sets)?;
                 }
-
-                let maxlength = get_max_namesize(sets.clone());
+                let maxlength = get_max_namesize(&sets);
 
                 // fetch all available Yubikeys
                 let yubikeys = fetch_yubikeys();
 
-                let sethashes = get_key_hash(sets.clone(), password, yubikeys, None).await?;
+                let sethashes = get_key_hash(&sets, password, yubikeys, None).await?;
                 let mut errors: Vec<(String, String)> = vec![];
-                for d in sets {
+                for d in sets.iter() {
                     let pass = sethashes.get(&d.to_string()).unwrap();
                     if pass.len() == 86 {
                         match d.loadkey(pass) {
@@ -115,21 +114,21 @@ async fn run(args: CliArgs) -> Result<Option<String>, Box<dyn std::error::Error>
                 recursive,
                 printwithname,
             } => {
-                let mut sets = datasets.clone();
+                let mut sets: Arc<[Dataset]> = datasets;
                 if recursive {
-                    sets = resolve_recursive(datasets)?;
+                    sets = resolve_recursive(&sets)?;
                 }
-                let maxlength = get_max_namesize(sets.clone());
+                let maxlength = get_max_namesize(&sets);
 
                 let mut setnames: Vec<String> = vec![];
 
-                for set in sets.clone() {
+                for set in sets.iter() {
                     setnames.push(set.to_string())
                 }
 
                 let yubikeys = fetch_yubikeys();
 
-                let sethashes = get_key_hash(sets.clone(), password, yubikeys, None).await?;
+                let sethashes = get_key_hash(&sets, password, yubikeys, None).await?;
 
                 let mut errors: Vec<(String, String)> = vec![];
                 if printwithname {
@@ -185,7 +184,7 @@ async fn run(args: CliArgs) -> Result<Option<String>, Box<dyn std::error::Error>
                         }
                     };
 
-                    for dataset in datasets.clone() {
+                    for dataset in datasets.iter() {
                         shavee_core::trace(&format!(
                             "\tCreate ZFS dataset: \"{}\" using \"{:?}\" method.",
                             dataset.to_string(),
@@ -193,7 +192,7 @@ async fn run(args: CliArgs) -> Result<Option<String>, Box<dyn std::error::Error>
                         ));
                     }
 
-                    for dataset in datasets {
+                    for dataset in datasets.iter() {
                         let mut secondfactor = args.second_factor.clone();
                         let salt = shavee_core::logic::generate_salt();
                         match args.second_factor.clone() {
@@ -254,26 +253,25 @@ async fn run(args: CliArgs) -> Result<Option<String>, Box<dyn std::error::Error>
                     datasets,
                     recursive,
                 } => {
-                    for dataset in datasets.clone() {
+                    for dataset in datasets.iter() {
                         shavee_core::trace(&format!(
                             "\tMount ZFS dataset: \"{}\".",
                             dataset.to_string()
                         ));
                     }
-                    let mut sets = datasets;
+                    let mut sets: Arc<[Dataset]> = datasets;
                     if recursive {
-                        sets = resolve_recursive(sets)?;
+                        sets = resolve_recursive(&sets)?;
                     }
-                    let maxlength = get_max_namesize(sets.clone());
+                    let maxlength = get_max_namesize(&sets);
 
                     let yubikeys = fetch_yubikeys();
 
                     let sethashes =
-                        get_key_hash(sets.clone(), password, yubikeys, Some(args.second_factor))
-                            .await?;
+                        get_key_hash(&sets, password, yubikeys, Some(args.second_factor)).await?;
 
                     let mut errors: Vec<(String, String)> = vec![];
-                    for d in sets {
+                    for d in sets.iter() {
                         let pass = sethashes.get(&d.to_string()).unwrap();
                         if pass.len() == 86 {
                             match d.loadkey(pass) {
@@ -307,22 +305,21 @@ async fn run(args: CliArgs) -> Result<Option<String>, Box<dyn std::error::Error>
                     recursive,
                     printwithname,
                 } => {
-                    let mut sets = datasets.clone();
+                    let mut sets: Arc<[Dataset]> = datasets;
                     if recursive {
-                        sets = resolve_recursive(datasets)?;
+                        sets = resolve_recursive(&sets)?;
                     }
-                    let maxlength = get_max_namesize(sets.clone());
+                    let maxlength = get_max_namesize(&sets);
 
                     let mut setnames: Vec<String> = vec![];
 
-                    for set in sets.clone() {
+                    for set in sets.iter() {
                         setnames.push(set.to_string())
                     }
 
                     let yubikeys = fetch_yubikeys();
                     let sethashes =
-                        get_key_hash(sets.clone(), password, yubikeys, Some(args.second_factor))
-                            .await?;
+                        get_key_hash(&sets, password, yubikeys, Some(args.second_factor)).await?;
                     let mut errors: Vec<(String, String)> = vec![];
                     if printwithname {
                         println!("\x1b[1m{:<maxlength$}    {}\x1b[0m", "Dataset", "Key");
@@ -366,17 +363,18 @@ async fn run(args: CliArgs) -> Result<Option<String>, Box<dyn std::error::Error>
 }
 
 async fn get_key_hash(
-    datasets: Vec<Dataset>,
+    datasets: &Arc<[Dataset]>,
     password: String,
     yubikeys: Arc<[Arc<Mutex<Yubikey>>]>,
     second_factor: Option<TwoFactorMode>,
 ) -> Result<HashMap<String, String>, Box<dyn std::error::Error>> {
     let mut sethashes: HashMap<String, String> = HashMap::new();
     let mut handles = vec![];
-    for d in datasets.clone() {
+    for d in datasets.iter() {
         let password = password.clone();
         let second_factor = second_factor.clone();
         let yubikeys = yubikeys.clone();
+        let d = d.clone();
         let handle = tokio::spawn(async move { get_keys(d, password, second_factor, yubikeys) });
         handles.push(handle);
     }

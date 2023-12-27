@@ -1,3 +1,4 @@
+use std::sync::Arc;
 use std::u16;
 
 use clap::builder::PossibleValuesParser;
@@ -24,14 +25,14 @@ const SHAVEE_FILE_PORT: &str = "SHAVEE_FILE_PORT";
 #[derive(Debug, Clone, PartialEq)]
 pub enum Operations {
     Create {
-        datasets: Vec<Dataset>,
+        datasets: Arc<[Dataset]>,
     },
     Mount {
-        datasets: Vec<Dataset>,
+        datasets: Arc<[Dataset]>,
         recursive: bool,
     },
     PrintDataset {
-        datasets: Vec<Dataset>,
+        datasets: Arc<[Dataset]>,
         recursive: bool,
         printwithname: bool,
     },
@@ -279,6 +280,8 @@ impl CliArgs {
             Some(s) => Some(s.to_owned()),
             None => None,
         };
+
+        let datasets: Arc<[Dataset]> = datasets.into();
 
         let operation = if cmdpresent(&arg, "create") {
             Operations::Create { datasets }
