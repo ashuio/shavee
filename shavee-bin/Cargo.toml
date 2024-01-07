@@ -23,7 +23,7 @@ base64 = "0.21"
 atty = "0.2"
 clap = { version = "4", features = ["cargo", "env"] }
 tokio = { version = "1.35", features = ["full"] }
-yubico_manager = {git = "https://github.com/ashuio/yubico-manager",package = "yubico_manager",version = "0.10"}
+yubikey-hmac-otp = "0.10.1"
 
 [dev-dependencies]
 stdio-override = "0.1"

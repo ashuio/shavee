@@ -2,7 +2,8 @@ use crate::{password, yubikey::*, zfs::*};
 use base64;
 use rand::{self, RngCore};
 use std::{error::Error, sync::Mutex};
-use yubico_manager::Yubikey;
+use yubikey_hmac_otp::Yubikey;
+
 
 pub const BASE64_ENGINE: base64::engine::GeneralPurpose = base64::engine::GeneralPurpose::new(
     &base64::alphabet::STANDARD,

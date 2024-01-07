@@ -19,7 +19,7 @@ yubikey = []                  # Yubikey feature
 file = []   
 
 [dependencies]
-yubico_manager = {git = "https://github.com/ashuio/yubico-manager",package = "yubico_manager",version = "0.10"}
+yubikey-hmac-otp = "0.10.1"
 curl = "0.4"
 argon2-kdf = "1.5"
 base64 = "0.21"

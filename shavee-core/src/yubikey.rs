@@ -1,6 +1,6 @@
 use std::sync::{Arc, Mutex};
-use yubico_manager::config::{Config, Mode, Slot};
-use yubico_manager::{Yubico, Yubikey};
+use yubikey_hmac_otp::config::{Config, Mode, Slot};
+use yubikey_hmac_otp::{Yubico, Yubikey};
 
 pub fn yubikey_get_hash(
     password: &[u8],
