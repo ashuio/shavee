@@ -6,7 +6,7 @@ pub fn yubikey_get_hash(
     password: &[u8],
     slot: Option<u8>,
     salt: &[u8],
-    yubikey: Arc<Mutex<Yubikey>>,
+    yubikey: &Mutex<Yubikey>,
 ) -> Result<Vec<u8>, Box<dyn std::error::Error>> {
     let mut yubi = Yubico::new();
     // Search for Yubikey
@@ -33,19 +33,18 @@ pub fn yubikey_get_hash(
 }
 
 pub fn yubikey_get_from_serial(
-    yubikeys: Arc<[Arc<Mutex<Yubikey>>]>,
+    yubikeys: &Arc<[Mutex<Yubikey>]>,
     serial: u32,
-) -> Result<Arc<Mutex<Yubikey>>, ()> {
-    for key in yubikeys.iter() {
-        if serial == key.lock().unwrap().serial.unwrap() {
-            return Ok(key.clone());
-        }
-    }
-
-    Err(())
+) -> Result<&Mutex<Yubikey>, ()> {
+    let index = yubikeys
+        .iter()
+        .position(|key| serial == key.lock().unwrap().serial.unwrap())
+        .unwrap();
+    let a = &yubikeys[index];
+    Ok(a)
 }
 
-pub fn fetch_yubikeys() -> Arc<[Arc<Mutex<Yubikey>>]> {
+pub fn fetch_yubikeys() -> Arc<[Mutex<Yubikey>]> {
     let fetched_keys = match Yubico::new().find_all_yubikeys() {
         Ok(keys) => keys,
         Err(_) => Vec::new(),
@@ -54,7 +53,7 @@ pub fn fetch_yubikeys() -> Arc<[Arc<Mutex<Yubikey>>]> {
     let mut keys = Vec::new();
 
     for key in fetched_keys {
-        let k = Arc::new(Mutex::new(key));
+        let k = Mutex::new(key);
         keys.push(k);
     }
 

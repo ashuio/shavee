@@ -1,10 +1,7 @@
 use crate::{password, yubikey::*, zfs::*};
 use base64;
 use rand::{self, RngCore};
-use std::{
-    error::Error,
-    sync::{Arc, Mutex},
-};
+use std::{error::Error, sync::Mutex};
 use yubico_manager::Yubikey;
 
 pub const BASE64_ENGINE: base64::engine::GeneralPurpose = base64::engine::GeneralPurpose::new(
@@ -19,7 +16,7 @@ impl Dataset {
         self,
         passphrase: &[u8],
         yubi_slot: Option<u8>,
-        yubikey: Arc<Mutex<Yubikey>>,
+        yubikey: &Mutex<Yubikey>,
         salt: &[u8],
     ) -> Result<(), Box<dyn Error>> {
         crate::trace(&format!(
@@ -59,7 +56,7 @@ pub fn yubi_key_calculation(
     pass: &[u8],
     yubi_slot: Option<u8>,
     salt: &[u8],
-    yubikey: std::sync::Arc<Mutex<Yubikey>>,
+    yubikey: &Mutex<Yubikey>,
 ) -> Result<String, Box<dyn Error>> {
     crate::trace("Calculating passphrase key using Yubikey.");
     let key = yubikey_get_hash(pass, yubi_slot, salt, yubikey)?;

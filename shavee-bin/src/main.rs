@@ -209,12 +209,12 @@ async fn run(args: CliArgs) -> Result<Option<String>, Box<dyn std::error::Error>
                                     Yubico::new().find_yubikey_from_serial(serial.unwrap())
                                 }?;
 
-                                let yubikey = Arc::new(Mutex::new(yubikey));
+                                let yubikey = Mutex::new(yubikey);
 
                                 dataset.clone().yubi_create(
                                     password.as_bytes(),
                                     yslot,
-                                    yubikey,
+                                    &yubikey,
                                     &salt,
                                 )?;
                             }
@@ -365,7 +365,7 @@ async fn run(args: CliArgs) -> Result<Option<String>, Box<dyn std::error::Error>
 async fn get_key_hash(
     datasets: &Arc<[Dataset]>,
     password: String,
-    yubikeys: Arc<[Arc<Mutex<Yubikey>>]>,
+    yubikeys: Arc<[Mutex<Yubikey>]>,
     second_factor: Option<TwoFactorMode>,
 ) -> Result<HashMap<String, String>, Box<dyn std::error::Error>> {
     let mut sethashes: HashMap<String, String> = HashMap::new();
@@ -393,7 +393,7 @@ fn get_keys(
     dataset: Dataset,
     password: String,
     second_factor: Option<TwoFactorMode>,
-    yubikeys: Arc<[Arc<Mutex<Yubikey>>]>,
+    yubikeys: Arc<[Mutex<Yubikey>]>,
 ) -> Result<[String; 2], (String, Box<dyn std::error::Error + Send>)> {
     let salt = match shavee_core::logic::get_salt(Some(&dataset)) {
         Ok(salt) => salt,
@@ -424,7 +424,7 @@ fn get_keys(
         #[cfg(feature = "yubikey")]
         TwoFactorMode::Yubikey { yslot, serial } => {
             let yubikey = if !yubikeys.is_empty() && serial.is_some() {
-                match shavee_core::yubikey::yubikey_get_from_serial(yubikeys, serial.unwrap()) {
+                match shavee_core::yubikey::yubikey_get_from_serial(&yubikeys, serial.unwrap()) {
                     Ok(ok) => ok,
                     Err(_) => {
                         let e = Box::new(std::io::Error::new(
@@ -436,7 +436,7 @@ fn get_keys(
                 }
             } else {
                 if !yubikeys.is_empty() {
-                    yubikeys[0].clone()
+                    &yubikeys[0]
                 } else {
                     let e = Box::new(std::io::Error::new(
                         std::io::ErrorKind::Other,
@@ -445,7 +445,6 @@ fn get_keys(
                     return Err((dataset.to_string(), e));
                 }
             };
-
             let yubihash = match yubikey_get_hash(password.as_bytes(), yslot, &salt, yubikey) {
                 Ok(ok) => ok,
                 Err(e) => {
