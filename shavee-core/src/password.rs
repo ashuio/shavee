@@ -1,26 +1,23 @@
-use argon2::{Argon2, Params};
+use argon2_kdf::Hasher;
 
 /// Generates hash of the password + salt
-pub fn hash_argon2(password: &[u8], salt: &[u8]) -> Result<Vec<u8>, argon2::Error> {
+pub fn hash_argon2(password: &[u8], salt: &[u8]) -> Result<Vec<u8>, argon2_kdf::Argon2Error> {
     crate::trace(&format!(
         "Hashing the password with \"{:?}\" as salt.",
         salt
     ));
 
-    let params = Params::new(524288, 4, 4, Some(64))?;
+    let hash = Hasher::new()
+        .algorithm(argon2_kdf::Algorithm::Argon2id)
+        .memory_cost_kib(524288)
+        .iterations(4)
+        .threads(4)
+        .hash_length(64)
+        .custom_salt(salt)
+        .secret(crate::STATIC_SALT.into())
+        .hash(password)?;
 
-    let config = Argon2::new_with_secret(
-        crate::STATIC_SALT.as_bytes(),
-        argon2::Algorithm::Argon2id,
-        argon2::Version::V0x13,
-        params,
-    )?;
-
-    let mut hash = [0u8; 64];
-
-    config.hash_password_into(password, salt, &mut hash)?;
-
-    Ok(hash.to_vec())
+    Ok(hash.as_bytes().to_vec())
 }
 
 mod tests {
