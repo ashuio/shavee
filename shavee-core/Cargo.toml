@@ -19,7 +19,7 @@ yubikey = []                  # Yubikey feature
 file = []   
 
 [dependencies]
-yubikey-hmac-otp = "0.10.1"
+yubikey-hmac-otp = "0.10"
 curl = "0.4"
 argon2-kdf = "1.5"
 base64 = "0.21"
