@@ -223,6 +223,22 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "baf1de4339761588bc0619e3cbc0120ee582ebb74b53b4efbf79117bd2da40fd"
 
 [[package]]
+name = "challenge_response"
+version = "0.1.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "37e2eb4e5aef3405ff36b56beeabde30e18aab65e66984fc7b1316032f8519f2"
+dependencies = [
+ "aes",
+ "bitflags 2.4.1",
+ "block-modes",
+ "hmac",
+ "rand",
+ "rusb",
+ "sha-1",
+ "structure",
+]
+
+[[package]]
 name = "cipher"
 version = "0.4.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -625,6 +641,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "nix"
+version = "0.27.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "2eb04e9c688eff1c89d72b407f168cf79bb9e867a9d3323ed6c01519eb9cc053"
+dependencies = [
+ "bitflags 2.4.1",
+ "cfg-if",
+ "libc",
+]
+
+[[package]]
 name = "nom"
 version = "7.1.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -959,15 +986,15 @@ version = "1.0.1"
 dependencies = [
  "atty",
  "base64",
+ "challenge_response",
  "clap",
- "nix",
+ "nix 0.26.4",
  "random-string",
  "rpassword",
  "shavee_core",
  "stdio-override",
  "tempfile",
  "tokio",
- "yubikey-hmac-otp",
 ]
 
 [[package]]
@@ -976,17 +1003,17 @@ version = "1.0.1"
 dependencies = [
  "argon2-kdf",
  "base64",
+ "challenge_response",
  "clap",
  "curl",
  "env_logger",
  "log",
- "nix",
+ "nix 0.27.1",
  "rand",
  "random-string",
  "strum",
  "strum_macros",
  "tempfile",
- "yubikey-hmac-otp",
 ]
 
 [[package]]
@@ -1372,19 +1399,3 @@ name = "windows_x86_64_msvc"
 version = "0.52.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "dff9641d1cd4be8d1a070daf9e3773c5f67e78b4d9d42263020c057706765c04"
-
-[[package]]
-name = "yubikey-hmac-otp"
-version = "0.10.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "075fc8abd0312c35e7070484e85325db3f792f87051f241b8ce74129eeb35300"
-dependencies = [
- "aes",
- "bitflags 2.4.1",
- "block-modes",
- "hmac",
- "rand",
- "rusb",
- "sha-1",
- "structure",
-]

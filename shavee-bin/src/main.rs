@@ -1,6 +1,7 @@
 mod args;
 use args::*;
 use atty::Stream;
+use challenge_response::{Yubico, Yubikey};
 #[cfg(feature = "file")]
 use shavee_core::filehash::get_filehash;
 use shavee_core::yubikey::{fetch_yubikeys, yubikey_get_hash};
@@ -9,7 +10,6 @@ use shavee_core::{structs::TwoFactorMode, zfs::resolve_recursive};
 use std::collections::HashMap;
 use std::io::stdin;
 use std::sync::{Arc, Mutex};
-use yubikey_hmac_otp::{Yubico, Yubikey};
 
 /// main() collect the arguments from command line, pass them to run() and print any
 /// messages upon exiting the program

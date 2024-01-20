@@ -1,6 +1,6 @@
+use challenge_response::config::{Config, Mode, Slot};
+use challenge_response::{Yubico, Yubikey};
 use std::sync::{Arc, Mutex};
-use yubikey_hmac_otp::config::{Config, Mode, Slot};
-use yubikey_hmac_otp::{Yubico, Yubikey};
 
 pub fn yubikey_get_hash(
     password: &[u8],

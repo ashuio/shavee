@@ -19,7 +19,7 @@ yubikey = []                  # Yubikey feature
 file = []   
 
 [dependencies]
-yubikey-hmac-otp = "0.10"
+challenge_response = "0.1"
 curl = "0.4"
 argon2-kdf = "1.5"
 base64 = "0.21"
@@ -32,5 +32,5 @@ strum_macros = "0.25"
 
 [dev-dependencies]
 tempfile = "3.4"
-nix = "0.26"
+nix = { version = "0.27", features = ["user"] }
 random-string = "1.0"
