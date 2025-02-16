@@ -17,13 +17,13 @@ yubikey = []                  # Yubikey feature
 file = []                     # File 2FA feature
 
 [dependencies]
-shavee_core = { package = "shavee_core", path = "../shavee-core", version = "1.0.1"}
+shavee_core = { package = "shavee_core", path = "../shavee-core", version = "1.0.2"}
 rpassword = "7.3"
-base64 = "0.21"
+base64 = "0.22"
 atty = "0.2"
 clap = { version = "4", features = ["cargo", "env"] }
 tokio = { version = "1.35", features = ["full"] }
-challenge_response = "0.1"
+challenge_response = "0.5"
 
 [dev-dependencies]
 stdio-override = "0.1"

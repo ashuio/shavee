@@ -1,7 +1,7 @@
 mod args;
 use args::*;
 use atty::Stream;
-use challenge_response::{Yubico, Yubikey};
+use challenge_response::{ChallengeResponse, Device};
 #[cfg(feature = "file")]
 use shavee_core::filehash::get_filehash;
 use shavee_core::yubikey::{fetch_yubikeys, yubikey_get_hash};
@@ -76,7 +76,7 @@ async fn run(args: CliArgs) -> Result<Option<String>, Box<dyn std::error::Error>
                 let maxlength = get_max_namesize(&sets);
 
                 // fetch all available Yubikeys
-                let yubikeys = fetch_yubikeys();
+                let yubikeys = fetch_yubikeys()?;
 
                 let sethashes = get_key_hash(&sets, password, yubikeys, None).await?;
                 let mut errors: Vec<(String, String)> = vec![];
@@ -126,7 +126,7 @@ async fn run(args: CliArgs) -> Result<Option<String>, Box<dyn std::error::Error>
                     setnames.push(set.to_string())
                 }
 
-                let yubikeys = fetch_yubikeys();
+                let yubikeys = fetch_yubikeys()?;
 
                 let sethashes = get_key_hash(&sets, password, yubikeys, None).await?;
 
@@ -199,14 +199,15 @@ async fn run(args: CliArgs) -> Result<Option<String>, Box<dyn std::error::Error>
                             #[cfg(feature = "yubikey")]
                             TwoFactorMode::Yubikey { yslot, serial } => {
                                 let yubikey = if serial == None {
-                                    let key = Yubico::new().find_yubikey()?;
+                                    let key = ChallengeResponse::new()?.find_device()?;
                                     secondfactor = TwoFactorMode::Yubikey {
                                         yslot: yslot,
                                         serial: key.serial,
                                     };
                                     Ok(key)
                                 } else {
-                                    Yubico::new().find_yubikey_from_serial(serial.unwrap())
+                                    ChallengeResponse::new()?
+                                        .find_device_from_serial(serial.unwrap())
                                 }?;
 
                                 let yubikey = Mutex::new(yubikey);
@@ -265,7 +266,7 @@ async fn run(args: CliArgs) -> Result<Option<String>, Box<dyn std::error::Error>
                     }
                     let maxlength = get_max_namesize(&sets);
 
-                    let yubikeys = fetch_yubikeys();
+                    let yubikeys = fetch_yubikeys()?;
 
                     let sethashes =
                         get_key_hash(&sets, password, yubikeys, Some(args.second_factor)).await?;
@@ -317,7 +318,7 @@ async fn run(args: CliArgs) -> Result<Option<String>, Box<dyn std::error::Error>
                         setnames.push(set.to_string())
                     }
 
-                    let yubikeys = fetch_yubikeys();
+                    let yubikeys = fetch_yubikeys()?;
                     let sethashes =
                         get_key_hash(&sets, password, yubikeys, Some(args.second_factor)).await?;
                     let mut errors: Vec<(String, String)> = vec![];
@@ -365,7 +366,7 @@ async fn run(args: CliArgs) -> Result<Option<String>, Box<dyn std::error::Error>
 async fn get_key_hash(
     datasets: &Arc<[Dataset]>,
     password: String,
-    yubikeys: Arc<[Mutex<Yubikey>]>,
+    yubikeys: Arc<[Mutex<Device>]>,
     second_factor: Option<TwoFactorMode>,
 ) -> Result<HashMap<String, String>, Box<dyn std::error::Error>> {
     let mut sethashes: HashMap<String, String> = HashMap::new();
@@ -393,7 +394,7 @@ fn get_keys(
     dataset: Dataset,
     password: String,
     second_factor: Option<TwoFactorMode>,
-    yubikeys: Arc<[Mutex<Yubikey>]>,
+    yubikeys: Arc<[Mutex<Device>]>,
 ) -> Result<[String; 2], (String, Box<dyn std::error::Error + Send>)> {
     let salt = match shavee_core::logic::get_salt(Some(&dataset)) {
         Ok(salt) => salt,

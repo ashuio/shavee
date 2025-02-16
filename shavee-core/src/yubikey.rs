@@ -1,14 +1,14 @@
 use challenge_response::config::{Config, Mode, Slot};
-use challenge_response::{Yubico, Yubikey};
+use challenge_response::{ChallengeResponse, Device};
 use std::sync::{Arc, Mutex};
 
 pub fn yubikey_get_hash(
     password: &[u8],
     slot: Option<u8>,
     salt: &[u8],
-    yubikey: &Mutex<Yubikey>,
+    yubikey: &Mutex<Device>,
 ) -> Result<Vec<u8>, Box<dyn std::error::Error>> {
-    let mut yubi = Yubico::new();
+    let mut yubi = ChallengeResponse::new()?;
     // Search for Yubikey
 
     let challenge = crate::password::hash_argon2(&password, &salt).expect("Hash error"); // Prepare Challenge
@@ -33,9 +33,9 @@ pub fn yubikey_get_hash(
 }
 
 pub fn yubikey_get_from_serial(
-    yubikeys: &Arc<[Mutex<Yubikey>]>,
+    yubikeys: &Arc<[Mutex<Device>]>,
     serial: u32,
-) -> Result<&Mutex<Yubikey>, ()> {
+) -> Result<&Mutex<Device>, ()> {
     let index = yubikeys
         .iter()
         .position(|key| serial == key.lock().unwrap().serial.unwrap())
@@ -44,8 +44,8 @@ pub fn yubikey_get_from_serial(
     Ok(a)
 }
 
-pub fn fetch_yubikeys() -> Arc<[Mutex<Yubikey>]> {
-    let fetched_keys = match Yubico::new().find_all_yubikeys() {
+pub fn fetch_yubikeys() -> Result<Arc<[Mutex<Device>]>, Box<dyn std::error::Error>> {
+    let fetched_keys = match ChallengeResponse::new()?.find_all_devices() {
         Ok(keys) => keys,
         Err(_) => Vec::new(),
     };
@@ -57,7 +57,7 @@ pub fn fetch_yubikeys() -> Arc<[Mutex<Yubikey>]> {
         keys.push(k);
     }
 
-    Arc::from_iter(keys)
+    Ok(Arc::from_iter(keys))
 }
 
 // TODO: How to implement unit test for yubikey which requires human input?

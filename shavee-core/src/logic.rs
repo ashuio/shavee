@@ -1,7 +1,7 @@
 use crate::{password, yubikey::*, zfs::*};
 use base64;
-use challenge_response::Yubikey;
-use rand::{self, RngCore};
+use challenge_response::Device;
+use rand::{rngs, RngCore, SeedableRng};
 use std::{error::Error, sync::Mutex};
 
 pub const BASE64_ENGINE: base64::engine::GeneralPurpose = base64::engine::GeneralPurpose::new(
@@ -16,7 +16,7 @@ impl Dataset {
         self,
         passphrase: &[u8],
         yubi_slot: Option<u8>,
-        yubikey: &Mutex<Yubikey>,
+        yubikey: &Mutex<Device>,
         salt: &[u8],
     ) -> Result<(), Box<dyn Error>> {
         crate::trace(&format!(
@@ -56,7 +56,7 @@ pub fn yubi_key_calculation(
     pass: &[u8],
     yubi_slot: Option<u8>,
     salt: &[u8],
-    yubikey: &Mutex<Yubikey>,
+    yubikey: &Mutex<Device>,
 ) -> Result<String, Box<dyn Error>> {
     crate::trace("Calculating passphrase key using Yubikey.");
     let key = yubikey_get_hash(pass, yubi_slot, salt, yubikey)?;
@@ -142,7 +142,8 @@ pub fn generate_salt() -> Vec<u8> {
     crate::trace("Generating a random salt:");
     // Generate a random salt using OS randomness
     let mut random_salt = vec![0u8; crate::RANDOM_SALT_LEN];
-    rand::rngs::OsRng.fill_bytes(&mut random_salt);
+    let mut rand = rngs::StdRng::from_os_rng();
+    rand.fill_bytes(&mut random_salt);
     crate::trace(&format!("{:?}", random_salt));
     // Return the generated salt
     random_salt

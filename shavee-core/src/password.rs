@@ -1,23 +1,42 @@
-use argon2_kdf::Hasher;
+use argon2::{
+    password_hash::{PasswordHasher, SaltString},
+    Params, Version,
+};
 
 /// Generates hash of the password + salt
-pub fn hash_argon2(password: &[u8], salt: &[u8]) -> Result<Vec<u8>, argon2_kdf::Argon2Error> {
+pub fn hash_argon2(password: &[u8], salt: &[u8]) -> Result<Vec<u8>, Box<dyn std::error::Error>> {
     crate::trace(&format!(
         "Hashing the password with \"{:?}\" as salt.",
         salt
     ));
 
-    let hash = Hasher::new()
-        .algorithm(argon2_kdf::Algorithm::Argon2id)
-        .memory_cost_kib(524288)
-        .iterations(4)
-        .threads(4)
-        .hash_length(64)
-        .custom_salt(salt)
-        .secret(crate::STATIC_SALT.into())
-        .hash(password)?;
+    let params = match Params::new(524288, 4, 4, Some(64)) {
+        Ok(p) => p,
+        Err(e) => return Err(e.to_string().into()),
+    };
+    let argon2 = match argon2::Argon2::new_with_secret(
+        crate::STATIC_SALT.as_bytes(),
+        argon2::Algorithm::Argon2id,
+        Version::V0x13,
+        params,
+    ) {
+        Ok(a) => a,
+        Err(e) => return Err(e.to_string().into()),
+    };
+    let salt_string = match SaltString::encode_b64(salt) {
+        Ok(s) => s,
+        Err(e) => return Err(e.to_string().into()),
+    };
+    let hash = match argon2.hash_password(password, &salt_string) {
+        Ok(h) => h.hash,
+        Err(e) => return Err(e.to_string().into()),
+    };
 
-    Ok(hash.as_bytes().to_vec())
+    let res = match hash {
+        Some(h) => Ok(h.as_bytes().to_vec()),
+        None => Err("Hash is empty".into()),
+    };
+    res
 }
 
 mod tests {
