@@ -63,6 +63,7 @@ async fn run(args: CliArgs) -> Result<Option<String>, Box<dyn std::error::Error>
 
     // Use this variable as the function return to be used for printing to stdio if needed.
     let mut exit_result: Option<String> = None;
+
     match args.operation {
         OperationMode::Auto { operation } => match operation {
             Operations::Mount {
@@ -76,7 +77,7 @@ async fn run(args: CliArgs) -> Result<Option<String>, Box<dyn std::error::Error>
                 let maxlength = get_max_namesize(&sets);
 
                 // fetch all available Yubikeys
-                let yubikeys = fetch_yubikeys()?;
+                let yubikeys = fetch_yubikeys().ok();
 
                 let sethashes = get_key_hash(&sets, password, yubikeys, None).await?;
                 let mut errors: Vec<(String, String)> = vec![];
@@ -126,7 +127,7 @@ async fn run(args: CliArgs) -> Result<Option<String>, Box<dyn std::error::Error>
                     setnames.push(set.to_string())
                 }
 
-                let yubikeys = fetch_yubikeys()?;
+                let yubikeys = fetch_yubikeys().ok();
 
                 let sethashes = get_key_hash(&sets, password, yubikeys, None).await?;
 
@@ -260,13 +261,14 @@ async fn run(args: CliArgs) -> Result<Option<String>, Box<dyn std::error::Error>
                             dataset.to_string()
                         ));
                     }
+
                     let mut sets: Arc<[Dataset]> = datasets;
                     if recursive {
                         sets = resolve_recursive(&sets)?;
                     }
                     let maxlength = get_max_namesize(&sets);
 
-                    let yubikeys = fetch_yubikeys()?;
+                    let yubikeys = fetch_yubikeys().ok();
 
                     let sethashes =
                         get_key_hash(&sets, password, yubikeys, Some(args.second_factor)).await?;
@@ -318,7 +320,7 @@ async fn run(args: CliArgs) -> Result<Option<String>, Box<dyn std::error::Error>
                         setnames.push(set.to_string())
                     }
 
-                    let yubikeys = fetch_yubikeys()?;
+                    let yubikeys = fetch_yubikeys().ok();
                     let sethashes =
                         get_key_hash(&sets, password, yubikeys, Some(args.second_factor)).await?;
                     let mut errors: Vec<(String, String)> = vec![];
@@ -366,7 +368,7 @@ async fn run(args: CliArgs) -> Result<Option<String>, Box<dyn std::error::Error>
 async fn get_key_hash(
     datasets: &Arc<[Dataset]>,
     password: String,
-    yubikeys: Arc<[Mutex<Device>]>,
+    yubikeys: Option<Arc<[Mutex<Device>]>>,
     second_factor: Option<TwoFactorMode>,
 ) -> Result<HashMap<String, String>, Box<dyn std::error::Error>> {
     let mut sethashes: HashMap<String, String> = HashMap::new();
@@ -394,7 +396,7 @@ fn get_keys(
     dataset: Dataset,
     password: String,
     second_factor: Option<TwoFactorMode>,
-    yubikeys: Arc<[Mutex<Device>]>,
+    yubikeys: Option<Arc<[Mutex<Device>]>>,
 ) -> Result<[String; 2], (String, Box<dyn std::error::Error + Send>)> {
     let salt = match shavee_core::logic::get_salt(Some(&dataset)) {
         Ok(salt) => salt,
@@ -424,21 +426,15 @@ fn get_keys(
     let passphrase = match second_factor {
         #[cfg(feature = "yubikey")]
         TwoFactorMode::Yubikey { yslot, serial } => {
-            let yubikey = if !yubikeys.is_empty() && serial.is_some() {
-                match shavee_core::yubikey::yubikey_get_from_serial(&yubikeys, serial.unwrap()) {
-                    Ok(ok) => ok,
-                    Err(_) => {
-                        let e = Box::new(std::io::Error::new(
-                            std::io::ErrorKind::Other,
-                            "Device Not Found".to_string(),
-                        ));
-                        return Err((dataset.to_string(), e));
-                    }
-                }
-            } else {
-                if !yubikeys.is_empty() {
-                    &yubikeys[0]
-                } else {
+            let yubikey = match &yubikeys {
+                Some(key) => match serial {
+                    Some(s) => match shavee_core::yubikey::yubikey_get_from_serial(&key, s) {
+                        Ok(ok) => ok,
+                        Err(_) => &key[0],
+                    },
+                    None => &key[0],
+                },
+                None => {
                     let e = Box::new(std::io::Error::new(
                         std::io::ErrorKind::Other,
                         "Device Not Found".to_string(),
@@ -446,7 +442,8 @@ fn get_keys(
                     return Err((dataset.to_string(), e));
                 }
             };
-            let yubihash = match yubikey_get_hash(password.as_bytes(), yslot, &salt, yubikey) {
+
+            let yubihash = match yubikey_get_hash(password.as_bytes(), yslot, &salt, &yubikey) {
                 Ok(ok) => ok,
                 Err(e) => {
                     let e = Box::new(std::io::Error::new(
