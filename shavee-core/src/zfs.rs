@@ -433,3 +433,55 @@ pub fn resolve_recursive(datasets: &[Dataset]) -> Result<Arc<[Dataset]>> {
 pub fn get_max_namesize(datasets: &[Dataset]) -> usize {
     datasets.iter().map(|d| d.name().len()).max().unwrap_or(0)
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_dataset_new_valid() {
+        let name = "zpool/home/user".to_string();
+        let ds = Dataset::new(name.clone()).unwrap();
+        assert_eq!(ds.name(), name);
+    }
+
+    #[test]
+    fn test_dataset_new_invalid_chars() {
+        let result = Dataset::new("zpool/home/user space".to_string());
+        assert!(matches!(result, Err(Error::InvalidInput(_))));
+
+        let result = Dataset::new("zpool/home/user@1".to_string());
+        assert!(matches!(result, Err(Error::InvalidInput(_))));
+    }
+
+    #[test]
+    fn test_dataset_new_invalid_start() {
+        let result = Dataset::new("-zpool/home".to_string());
+        assert!(matches!(result, Err(Error::InvalidInput(_))));
+
+        let result = Dataset::new("/zpool/home".to_string());
+        assert!(matches!(result, Err(Error::InvalidInput(_))));
+    }
+
+    #[test]
+    fn test_dataset_new_empty() {
+        let result = Dataset::new("".to_string());
+        assert!(matches!(result, Err(Error::InvalidInput(_))));
+    }
+
+    #[test]
+    fn test_get_max_namesize() {
+        let ds1 = Dataset::new("pool/a".to_string()).unwrap(); // length 6
+        let ds2 = Dataset::new("pool/longer_name".to_string()).unwrap(); // length 16
+        let ds3 = Dataset::new("pool/b".to_string()).unwrap(); // length 6
+
+        let datasets = vec![ds1, ds2, ds3];
+        assert_eq!(get_max_namesize(&datasets), 16);
+    }
+
+    #[test]
+    fn test_get_max_namesize_empty() {
+        let datasets: Vec<Dataset> = vec![];
+        assert_eq!(get_max_namesize(&datasets), 0);
+    }
+}

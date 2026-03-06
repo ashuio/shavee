@@ -132,3 +132,38 @@ pub fn error(_message: &str) {
     #[cfg(feature = "trace")]
     log::error!("{}", _message);
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_parse_file_size_arguments_empty() {
+        let args: Vec<String> = vec![];
+        let result = parse_file_size_arguments(&args);
+        assert!(matches!(result, Err(Error::InvalidInput(_))));
+    }
+
+    #[test]
+    fn test_parse_file_size_arguments_single() {
+        let args: Vec<String> = vec!["/path/to/file".to_string()];
+        let result = parse_file_size_arguments(&args).unwrap();
+        assert_eq!(result.0, "/path/to/file");
+        assert_eq!(result.1, None);
+    }
+
+    #[test]
+    fn test_parse_file_size_arguments_valid_size() {
+        let args: Vec<String> = vec!["/path/to/file".to_string(), "1024".to_string()];
+        let result = parse_file_size_arguments(&args).unwrap();
+        assert_eq!(result.0, "/path/to/file");
+        assert_eq!(result.1, Some(1024));
+    }
+
+    #[test]
+    fn test_parse_file_size_arguments_invalid_size() {
+        let args: Vec<String> = vec!["/path/to/file".to_string(), "not_a_number".to_string()];
+        let result = parse_file_size_arguments(&args);
+        assert!(matches!(result, Err(Error::InvalidInput(_))));
+    }
+}

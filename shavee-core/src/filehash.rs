@@ -119,3 +119,61 @@ fn get_filehash_remote(
     // Derive final key using Argon2
     crate::password::hash_argon2(&hash_input, salt)
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::io::Write;
+    use tempfile::NamedTempFile;
+
+    #[test]
+    fn test_get_filehash_local_no_size_limit() {
+        let mut temp_file = NamedTempFile::new().unwrap();
+        let file_content = b"hello world";
+        temp_file.write_all(file_content).unwrap();
+
+        let salt = b"somesalt123";
+        let expected_hash = crate::password::hash_argon2(file_content, salt).unwrap();
+
+        let path = temp_file.path().to_str().unwrap();
+        let actual_hash = get_filehash_local(path, None, salt).unwrap();
+
+        assert_eq!(actual_hash, expected_hash);
+    }
+
+    #[test]
+    fn test_get_filehash_local_with_size_limit() {
+        let mut temp_file = NamedTempFile::new().unwrap();
+        let file_content = b"hello world";
+        temp_file.write_all(file_content).unwrap();
+
+        let salt = b"somesalt123";
+        // It should only read the first 5 bytes "hello"
+        let expected_hash = crate::password::hash_argon2(b"hello", salt).unwrap();
+
+        let path = temp_file.path().to_str().unwrap();
+        let actual_hash = get_filehash_local(path, Some(5), salt).unwrap();
+
+        assert_eq!(actual_hash, expected_hash);
+    }
+
+    #[test]
+    fn test_get_filehash_local_file_not_found() {
+        let salt = b"somesalt123";
+        let result =
+            get_filehash_local("/non/existent/file/path/that/should/not/exist", None, salt);
+        assert!(result.is_err(), "Should return error for non-existent file");
+    }
+
+    #[test]
+    fn test_get_filehash_dispatch_local() {
+        let mut temp_file = NamedTempFile::new().unwrap();
+        let file_content = b"test";
+        temp_file.write_all(file_content).unwrap();
+        let salt = b"somesalt123";
+
+        let path = temp_file.path().to_str().unwrap();
+        let hash = get_filehash(path, None, None, salt);
+        assert!(hash.is_ok());
+    }
+}

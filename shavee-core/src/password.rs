@@ -57,3 +57,52 @@ pub fn hash_argon2(password: &[u8], salt: &[u8]) -> Result<Vec<u8>> {
         .map(|h: argon2::password_hash::Output| h.as_bytes().to_vec())
         .ok_or_else(|| Error::Crypto("Argon2 produced an empty hash".to_string()))
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_hash_argon2_deterministic() {
+        let password = b"my_secure_password";
+        let salt = b"somesalt";
+        let hash1 = hash_argon2(password, salt).unwrap();
+        let hash2 = hash_argon2(password, salt).unwrap();
+
+        assert_eq!(
+            hash1, hash2,
+            "Hashing the same password and salt should be deterministic due to static secret"
+        );
+    }
+
+    #[test]
+    fn test_hash_argon2_different_passwords() {
+        let salt = b"somesalt";
+        let hash1 = hash_argon2(b"pass1", salt).unwrap();
+        let hash2 = hash_argon2(b"pass2", salt).unwrap();
+
+        assert_ne!(
+            hash1, hash2,
+            "Different passwords should result in different hashes"
+        );
+    }
+
+    #[test]
+    fn test_hash_argon2_different_salts() {
+        let password = b"my_secure_password";
+        let hash1 = hash_argon2(password, b"somesalt1").unwrap();
+        let hash2 = hash_argon2(password, b"somesalt2").unwrap();
+
+        assert_ne!(
+            hash1, hash2,
+            "Different salts should result in different hashes"
+        );
+    }
+
+    #[test]
+    fn test_hash_argon2_empty_password() {
+        let salt = b"somesalt";
+        let hash1 = hash_argon2(b"", salt);
+        assert!(hash1.is_ok(), "Should be able to hash an empty password");
+    }
+}

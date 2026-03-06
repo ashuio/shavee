@@ -160,3 +160,58 @@ pub fn generate_salt() -> Vec<u8> {
     rngs::StdRng::from_os_rng().fill_bytes(&mut salt);
     salt
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_generate_salt() {
+        let salt1 = generate_salt();
+        let salt2 = generate_salt();
+        assert_eq!(salt1.len(), crate::RANDOM_SALT_LEN);
+        assert_eq!(salt2.len(), crate::RANDOM_SALT_LEN);
+        assert_ne!(salt1, salt2, "Generated salts should be random");
+    }
+
+    #[test]
+    fn test_password_mode_hash_deterministic() {
+        let password = b"my_password";
+        let salt = b"somesalt123";
+        let hash1 = password_mode_hash(password, salt).unwrap();
+        let hash2 = password_mode_hash(password, salt).unwrap();
+        assert_eq!(
+            hash1, hash2,
+            "Hashing same password and salt should produce the same output"
+        );
+    }
+
+    #[test]
+    fn test_file_key_calculation_deterministic() {
+        let password = b"my_password";
+        let filehash = vec![1, 2, 3, 4, 5];
+        let salt = b"somesalt123";
+        let hash1 = file_key_calculation(password, filehash.clone(), salt).unwrap();
+        let hash2 = file_key_calculation(password, filehash.clone(), salt).unwrap();
+        assert_eq!(hash1, hash2, "File key calculation should be deterministic");
+    }
+
+    #[test]
+    fn test_file_key_calculation_different_filehash() {
+        let password = b"my_password";
+        let salt = b"somesalt123";
+        let hash1 = file_key_calculation(password, vec![1, 2, 3], salt).unwrap();
+        let hash2 = file_key_calculation(password, vec![1, 2, 4], salt).unwrap();
+        assert_ne!(
+            hash1, hash2,
+            "Different file hashes should produce different keys"
+        );
+    }
+
+    #[test]
+    fn test_get_salt_fallback() {
+        // Without environment variables and dataset, it should return STATIC_SALT
+        let salt = get_salt(None).unwrap();
+        assert_eq!(salt, crate::STATIC_SALT.as_bytes().to_vec());
+    }
+}
