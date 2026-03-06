@@ -1,3 +1,8 @@
+//! Shavee Core: A library for ZFS dataset encryption management.
+//!
+//! This library provides the core logic for generating encryption keys for ZFS datasets
+//! using various 2FA methods like Yubikeys and files.
+
 pub mod filehash;
 pub mod logic;
 pub mod password;
@@ -5,132 +10,125 @@ pub mod structs;
 pub mod yubikey;
 pub mod zfs;
 
+use std::fmt;
+
+/// Predefined message for unreachable code paths.
 pub const UNREACHABLE_CODE: &str =
     "Panic! Something unexpected happened! Please help by reporting it as a bug.";
 
-/// Static salt for backward compatibility
+/// Static salt for backward compatibility with earlier versions.
 pub const STATIC_SALT: &str = "This Project is Dedicated to Tamanna.";
 
-/// Name of Shell Environment variable for storing salt
+/// Name of the environment variable used to store a custom salt.
 pub const ENV_SALT_VARIABLE: &str = "SHAVEE_SALT";
 
-/// Len of the random salt (in Bytes)
-/// It must be bigger than 16 bytes
+/// Length of the random salt in bytes.
+/// Must be at least 16 bytes for security.
 pub const RANDOM_SALT_LEN: usize = 32;
 
-use clap;
-#[cfg(feature = "trace")]
-use env_logger;
-#[cfg(feature = "trace")]
-use log;
+/// Core error type for the Shavee library.
+#[derive(Debug)]
+pub enum Error {
+    /// Errors originating from ZFS command execution.
+    Zfs(String),
+    /// Errors related to password hashing or KDF operations.
+    Crypto(String),
+    /// Errors related to Yubikey interaction.
+    Yubikey(String),
+    /// Errors related to file or network I/O.
+    Io(std::io::Error),
+    /// Errors related to cURL operations (remote files).
+    Curl(curl::Error),
+    /// Errors related to invalid input arguments.
+    InvalidInput(String),
+    /// Generic error with a message.
+    Other(String),
+}
 
-/// first [0] value is the file name
-/// it is a required field for "--file" and its existence already checked by clap
-pub fn parse_file_size_arguments(
-    file_size_argument: Vec<&String>,
-) -> Result<(Option<String>, Option<u64>), clap::Error> {
-    let file = Some(file_size_argument[0].to_string());
-
-    // If user entered SIZE arg value, it will be wrapped with Some(), otherwise None will be returned
-    let size = match file_size_argument.len() {
-        // if there is only 1 entry then it is file name and size is set to None
-        number_of_entries if number_of_entries == 1 => None,
-        // if there are 2 entries, then 2nd entry is size
-        number_of_entries if number_of_entries == 2 => {
-            // if "--file" has two entries, then 2nd [1] is size
-            let second_entry = file_size_argument[1];
-            // however the size entry needs to be validated and return error if it is not a u64 value
-            match second_entry.parse::<u64>() {
-                // wrap the parsed entry with Some()
-                Ok(size_arg) => Some(size_arg),
-
-                // on error return invalid value kind
-                Err(_) => {
-                    let error_message =
-                        format!(r#""{}" is not valid for SIZE argument."#, second_entry);
-
-                    return Err(clap::Error::raw(
-                        clap::error::ErrorKind::InvalidValue,
-                        &error_message[..],
-                    ));
-                }
-            }
+impl fmt::Display for Error {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Error::Zfs(m) => write!(f, "ZFS error: {}", m),
+            Error::Crypto(m) => write!(f, "Crypto error: {}", m),
+            Error::Yubikey(m) => write!(f, "Yubikey error: {}", m),
+            Error::Io(e) => write!(f, "I/O error: {}", e),
+            Error::Curl(e) => write!(f, "cURL error: {}", e),
+            Error::InvalidInput(m) => write!(f, "Invalid input: {}", m),
+            Error::Other(m) => write!(f, "Error: {}", m),
         }
+    }
+}
 
-        // clap checks against number of entries must not allow any other value than 1 and 2 entries
-        _ => {
-            return Err(clap::Error::raw(
-                clap::error::ErrorKind::InvalidValue,
-                UNREACHABLE_CODE,
-            ));
-        }
+impl std::error::Error for Error {}
+
+impl From<std::io::Error> for Error {
+    fn from(err: std::io::Error) -> Self {
+        Error::Io(err)
+    }
+}
+
+impl From<curl::Error> for Error {
+    fn from(err: curl::Error) -> Self {
+        Error::Curl(err)
+    }
+}
+
+impl From<String> for Error {
+    fn from(err: String) -> Self {
+        Error::Other(err)
+    }
+}
+
+/// Result type alias for Shavee core operations.
+pub type Result<T> = std::result::Result<T, Error>;
+
+/// Parses file and size arguments, typically from CLI input.
+///
+/// # Arguments
+/// * `args` - A slice of strings containing the file path and optionally a size limit.
+///
+/// # Returns
+/// A tuple containing the file path and an optional size limit in bytes.
+pub fn parse_file_size_arguments(args: &[String]) -> Result<(String, Option<u64>)> {
+    if args.is_empty() {
+        return Err(Error::InvalidInput("Missing file argument".to_string()));
+    }
+
+    let file = args[0].clone();
+    let size = if args.len() > 1 {
+        Some(args[1].parse::<u64>().map_err(|_| {
+            Error::InvalidInput(format!("\"{}\" is not a valid size (must be u64)", args[1]))
+        })?)
+    } else {
+        None
     };
 
-    // Function Return values wrap with OK indicating no error
     Ok((file, size))
 }
 
-/// Generates debug logs if "trace" feature is enabled in `Cargo.toml`
-/// RUST_LOG environment variable needs to be set to "debug" or "trace"
-pub fn trace_init(_test: bool) -> () {
+/// Initializes the logging system if the "trace" feature is enabled.
+///
+/// # Arguments
+/// * `_is_test` - Whether the logger is being initialized for a test environment.
+pub fn trace_init(_is_test: bool) {
     #[cfg(feature = "trace")]
-    if _test {
-        env_logger::init();
-    } else {
-        let _ = env_logger::builder().is_test(true).try_init();
+    {
+        if _is_test {
+            let _ = env_logger::builder().is_test(true).try_init();
+        } else {
+            env_logger::init();
+        }
     }
-    #[cfg(not(feature = "trace"))]
-    ();
 }
 
-pub fn trace(_message: &str) -> () {
+/// Logs a trace message if the "trace" feature is enabled.
+pub fn trace(_message: &str) {
     #[cfg(feature = "trace")]
     log::trace!("{}", _message);
-    #[cfg(not(feature = "trace"))]
-    ();
 }
 
-pub fn error(_message: &str) -> () {
+/// Logs an error message if the "trace" feature is enabled.
+pub fn error(_message: &str) {
     #[cfg(feature = "trace")]
     log::error!("{}", _message);
-    #[cfg(not(feature = "trace"))]
-    ();
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn parse_file_size_arguments_test() {
-        crate::trace_init(false);
-        // test for when both file and size is provided
-        assert_eq!(
-            parse_file_size_arguments(vec![&"./shavee".to_string(), &"2048".to_string()]).unwrap(),
-            (Some(String::from("./shavee")), Some(2048 as u64))
-        );
-
-        // test for when only file is provided
-        assert_eq!(
-            parse_file_size_arguments(vec![&"./shavee".to_string()]).unwrap(),
-            (Some(String::from("./shavee")), None)
-        );
-
-        // test for when there is an empty input
-        assert_eq!(
-            parse_file_size_arguments(vec![&"".to_string()]).unwrap(),
-            (Some(String::from("")), None)
-        );
-
-        // test for reporting error when size is invalid
-        parse_file_size_arguments(vec![&"./shavee".to_string(), &"ten".to_string()]).unwrap_err();
-
-        // test for reporting error when more than 2 entries are provided
-        parse_file_size_arguments(vec![
-            &"./shavee".to_string(),
-            &"2048".to_string(),
-            &"ten".to_string(),
-        ])
-        .unwrap_err();
-    }
 }

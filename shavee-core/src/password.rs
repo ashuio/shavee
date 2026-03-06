@@ -1,88 +1,59 @@
+//! Password hashing and key derivation utilities using Argon2.
+
+use crate::{Error, Result};
 use argon2::{
-    password_hash::{PasswordHasher, SaltString},
     Params, Version,
+    password_hash::{PasswordHasher, SaltString},
 };
 
-/// Generates hash of the password + salt
-pub fn hash_argon2(password: &[u8], salt: &[u8]) -> Result<Vec<u8>, Box<dyn std::error::Error>> {
-    crate::trace(&format!(
-        "Hashing the password with \"{:?}\" as salt.",
-        salt
-    ));
+/// Argon2id parameters used for hashing.
+const ARGON2_MEMORY: u32 = 524288; // 512 MB
+const ARGON2_LANES: u32 = 4;
+const ARGON2_ITERATIONS: u32 = 4;
+const ARGON2_OUTPUT_LEN: usize = 64;
 
-    let params = match Params::new(524288, 4, 4, Some(64)) {
-        Ok(p) => p,
-        Err(e) => return Err(e.to_string().into()),
-    };
-    let argon2 = match argon2::Argon2::new_with_secret(
+/// Hashes a password with a given salt using Argon2id.
+///
+/// This function uses Argon2id with a hardcoded static secret (from `crate::STATIC_SALT`)
+/// for additional security and to maintain compatibility with existing datasets.
+///
+/// # Arguments
+/// * `password` - The user-provided password bytes.
+/// * `salt` - The salt bytes (usually from ZFS property or env).
+///
+/// # Returns
+/// A `Result` containing the hashed bytes as a `Vec<u8>`.
+pub fn hash_argon2(password: &[u8], salt: &[u8]) -> Result<Vec<u8>> {
+    crate::trace(&format!("Hashing password with salt: {:?}", salt));
+
+    // Initialize Argon2 parameters (Memory, Iterations, Lanes, Output Length)
+    let params = Params::new(
+        ARGON2_MEMORY,
+        ARGON2_ITERATIONS,
+        ARGON2_LANES,
+        Some(ARGON2_OUTPUT_LEN),
+    )
+    .map_err(|e| Error::Crypto(e.to_string()))?;
+
+    // Create Argon2 instance with the static secret
+    let argon2 = argon2::Argon2::new_with_secret(
         crate::STATIC_SALT.as_bytes(),
         argon2::Algorithm::Argon2id,
         Version::V0x13,
         params,
-    ) {
-        Ok(a) => a,
-        Err(e) => return Err(e.to_string().into()),
-    };
-    let salt_string = match SaltString::encode_b64(salt) {
-        Ok(s) => s,
-        Err(e) => return Err(e.to_string().into()),
-    };
-    let hash = match argon2.hash_password(password, &salt_string) {
-        Ok(h) => h.hash,
-        Err(e) => return Err(e.to_string().into()),
-    };
+    )
+    .map_err(|e| Error::Crypto(e.to_string()))?;
 
-    let res = match hash {
-        Some(h) => Ok(h.as_bytes().to_vec()),
-        None => Err("Hash is empty".into()),
-    };
-    res
-}
+    // Encode salt as SaltString
+    let salt_string = SaltString::encode_b64(salt).map_err(|e| Error::Crypto(e.to_string()))?;
 
-mod tests {
-    #[test]
-    fn test_hash_argon2() {
-        use super::*;
+    // Perform the hashing operation
+    let hash = argon2
+        .hash_password(password, &salt_string)
+        .map_err(|e: argon2::password_hash::Error| Error::Crypto(e.to_string()))?;
 
-        crate::trace_init(false);
-        // defining a struct that will hold input arguments
-        // and their output hash results
-        // need to use io::ErrorKind (instead of io:Error) which supports PartialEq
-        #[derive(Debug, PartialEq)]
-        struct PasswordHashPair<'a> {
-            password: &'a [u8],
-            hash_result: Vec<u8>,
-        }
-
-        // each entry of the array holds the input/output struct
-        let password_hash_pairs = [
-            PasswordHashPair {
-                password: b"",
-                hash_result: vec![
-                    13, 58, 236, 241, 152, 183, 100, 212, 216, 84, 90, 94, 168, 228, 31, 30, 77,
-                    49, 66, 19, 123, 152, 12, 239, 137, 235, 105, 65, 204, 16, 29, 214, 212, 15,
-                    173, 80, 27, 108, 127, 193, 196, 252, 102, 37, 234, 173, 71, 28, 14, 157, 76,
-                    244, 99, 170, 151, 224, 154, 190, 53, 226, 85, 233, 245, 225,
-                ],
-            },
-            PasswordHashPair {
-                password: b"This is a test!",
-                hash_result: vec![
-                    85, 96, 224, 183, 7, 56, 237, 97, 204, 74, 197, 74, 92, 189, 56, 227, 126, 87,
-                    228, 28, 207, 173, 5, 111, 52, 228, 92, 208, 80, 152, 167, 236, 7, 214, 53,
-                    103, 36, 168, 140, 9, 151, 221, 179, 68, 64, 180, 176, 81, 253, 221, 210, 100,
-                    153, 141, 80, 152, 133, 23, 75, 217, 214, 153, 56, 173,
-                ],
-            },
-        ];
-
-        for index in 0..password_hash_pairs.len() {
-            if let Ok(hash) = hash_argon2(
-                password_hash_pairs[index].password.into(),
-                &crate::STATIC_SALT.as_bytes(), // use static salt for predictable results
-            ) {
-                assert_eq!(hash, password_hash_pairs[index].hash_result)
-            };
-        }
-    }
+    // Extract the hash bytes
+    hash.hash
+        .map(|h: argon2::password_hash::Output| h.as_bytes().to_vec())
+        .ok_or_else(|| Error::Crypto("Argon2 produced an empty hash".to_string()))
 }

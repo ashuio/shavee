@@ -1,9 +1,10 @@
 use std::sync::Arc;
-use std::u16;
 
-use clap::builder::PossibleValuesParser;
-//TODO (Issue #16): Implement clap_config() once it is ported to clap 3.0
-use clap::{crate_authors, crate_description, crate_name, crate_version, Arg, ArgMatches, Command};
+use clap::builder::{PossibleValuesParser, ValueParser};
+use clap::{
+    Arg, ArgAction, ArgGroup, ArgMatches, Command, crate_authors, crate_description, crate_name,
+    crate_version,
+};
 use shavee_core::structs::TwoFactorMode;
 use shavee_core::zfs::Dataset;
 
@@ -67,329 +68,236 @@ impl CliArgs {
         I: Iterator<Item = T>,
         T: Into<std::ffi::OsString> + Clone,
     {
-        let cli_app = Command::new(crate_name!())
-            .about(crate_description!()) // Define APP and args
-            .author(crate_authors!())
-            .version(crate_version!())
-            .arg_required_else_help(true)
-            .arg(
-                Arg::new("create")
-                    .short('c')
-                    .env(SHAVEE_CREATE)
-                    .num_args(0)
-                    .long("create")
-                    .required(false)
-                    .requires("zset")
-                    .next_line_help(true)   // long help description will be printed in the next line
-                    .help("Create/Change key of a ZFS dataset with the derived encryption key. Must be used with --zset"),
-            )
-            .arg(
-                Arg::new("zset")
-                    .short('z')
-                    .env(SHAVEE_ZFS_DATASET)
-                    .num_args(1..)
-                    .long("zset")
-                    .value_name("ZFS dataset")
-                    .required(true)
-                    .next_line_help(true)   // long help description will be printed in the next line
-                    .help("ZFS Dataset eg. \"zroot/data/home\"\n\
-                    If present in conjunction with any of the other options, it will try to unlock and mount the \
-                    given dataset with the derived key instead of printing it. Takes zfs dataset path as argument."),
-            )
-            .arg(
-                Arg::new("yubikey")
-                    .env(SHAVEE_YUBIKEY)
-                    .long("yubi")
-                    .short('y')
-                    .num_args(0..=1)
-                    .value_name("Yubikey Serial")
-                    // .value_parser(clap::value_parser!(u32))
-                    .value_parser(clap::builder::ValueParser::new(yubikey_serial_parser))
-                    .default_missing_value(None)
-                    .help("Use Yubikey HMAC as second factor")
-                    .required(false)
-                    .hide(!cfg!(feature = "yubikey")) // hide it in help if feature is disabled
-                    .conflicts_with("keyfile"), // yubikey xor keyfile, not both.
-            )
-            .arg(
-                Arg::new("slot")
-                    .short('s')
-                    .env(SHAVEE_YUBIKEY_SLOT)
-                    .num_args(1)
-                    .long("slot")
-                    .help("Yubikey HMAC Slot")
-                    .value_name("HMAC slot")
-                    .default_missing_value("2")
-                    .default_value("2")
-                    .value_parser(PossibleValuesParser::new(YUBI_SLOTS.iter()))
-                    .hide(!cfg!(feature = "yubikey")) // hide it in help if feature is disabled
-                    .required(false)
-                    .requires("yubikey"), // it must be accompanied by yubikey option
-            )
-            .arg(
-                Arg::new("print")
-                    .short('p')
-                    .env(SHAVEE_MODE_PRINT)
-                    .long("print")
-                    .num_args(0)
-                    .help("Print Secret key for a Dataset")
-                    .required(false)
-                    .requires("zset")
-            )
-            .arg(
-                Arg::new("mount")
-                    .env(SHAVEE_MODE_MOUNT)
-                    .short('m')
-                    .long("mount")
-                    .num_args(0)
-                    .help("Unlock and Mount Dataset")
-                    .required(false)
-                    .requires("zset")
-            )
-            .arg(
-                Arg::new("printwithname")
-                    .short('d')
-                    .env(SHAVEE_MODE_PRINT_WITH_NAME)
-                    .long("dataset")
-                    .help("Print Secret with Dataset name.")
-                    .required(false)
-                    .requires("zset")
-                    .num_args(0)
-                    .requires("print")
-            )
-            .arg(
-                Arg::new("auto")
-                    .short('a')
-                    .env(SHAVEE_AUTO_DETECT)
-                    .long("auto")
-                    .help("Try to automatically guess the unlock config for a dataset")
-                    .conflicts_with("create")
-                    .required(false)
-                    .requires("zset")
-                    .num_args(0)
-                    .requires("recursivegroup")
-            )
-            .arg(
-                Arg::new("recursive")
-                    .short('r')
-                    .env(SHAVEE_RECURSIVE)
-                    .long("recursive")
-                    .help("Perform Mount or Print Operations recursively")
-                    .required(false)
-                    .requires("zset")
-                    .num_args(0)
-                    .requires("recursivegroup")
-            )
-            .group(clap::ArgGroup::new("recursivegroup")
-            .args(&["mount", "print"])
-            .multiple(false))
-            .arg(
-                Arg::new("keyfile")
-                    .short('f')
-                    .env(SHAVEE_ZFS_KEYFILE)
-                    .long("file")
-                    .help("Use any file as second factor, takes filepath, SFTP or a HTTP(S) location as an argument. \
-                    If SIZE is entered, the first SIZE in bytes will be used to generate hash. It must be number between \
-                    1 and 2^(64).")
-                    .hide(!cfg!(feature = "file")) // hide it in help if feature is disabled
-                    .required(false)
-                    .value_name("FILE|ADDRESS [SIZE]")
-                    .num_args(1..=2)
-                    .conflicts_with("yubikey"), // keyfile xor yubikey, not both.
-            )
-            .arg(
-                Arg::new("port")
-                    .short('P')
-                    .env(SHAVEE_FILE_PORT)
-                    .long("port")
-                    .num_args(1)
-                    .value_name("port number")
-                    .hide(!cfg!(feature = "file"))  // hide it in help if feature is disabled
-                    .required(false)
-                    .requires("keyfile")
-                    .value_parser(clap::value_parser!(u16))    // port must be accompanied by keyfile option
-                    .help("Set port for HTTP(S) and SFTP requests"),
-            );
+        let matches = cli().try_get_matches_from(args)?;
+        Self::from_matches(&matches)
+    }
 
-        // in order to be able to write unit tests, getting the arg matches
-        // shouldn't cause new_from() to exit or panic.
-        let arg = cli_app.try_get_matches_from(args)?;
-
-        // check for keyfile argument if parse them if needed.
-        // otherwise fill them with None
-        #[cfg(feature = "file")]
-        let fileargs = arg.get_many("keyfile");
-        #[cfg(feature = "file")]
-        let (file, size) = match fileargs {
-            Some(s) => {
-                let a: Vec<&String> = s.collect();
-                shavee_core::parse_file_size_arguments(a).expect("Arg Pass error")
-            }
-            None => (None, None),
-        };
-
-        // if zset arg is entered, then its value will be used
-        // NOTE: validating dataset is done by zfs module
-        let mut datasets: Vec<Dataset> = Vec::new();
-
-        if cmdpresent(&arg, "zset") {
-            let datasetvalue = arg.get_many::<String>("zset");
-            match datasetvalue {
-                Some(d) => {
-                    let sets: Vec<&String> = d.collect();
-                    for i in sets {
-                        let mut d = i.to_owned();
-                        if d.ends_with("/") {
-                            d.pop();
-                        };
-                        let d = Dataset::new(d)?;
-                        datasets.push(d);
-                    }
-                }
-                None => {}
-            };
-        }
-
-        // The port arguments are <u16> or None (not entered by user)
-        #[cfg(feature = "file")]
-        let port = arg.get_one::<u16>("port");
-        #[cfg(feature = "file")]
-        let port = match port {
-            Some(p) => {
-                let mut p = Some(p.to_owned());
-                if p == Some(0) {
-                    p = None
-                }
-                p
-            }
-            None => None,
-        };
-
-        // The accepted slot arguments are Some (1 or 2) or None (not entered by user)
-        // Default value if not entered is 2
-        #[cfg(feature = "yubikey")]
-        let yslot = arg.get_one::<String>("slot");
-        let yslot = match yslot {
-            Some(s) => Some(s.to_owned().parse::<u8>().unwrap()),
-            None => None,
-        };
-
-        let yubiserial: Option<&u32> = arg.get_one("yubikey");
-
-        let yubiserial = match yubiserial {
-            Some(s) => Some(s.to_owned()),
-            None => None,
-        };
-
+    fn from_matches(matches: &ArgMatches) -> Result<Self, clap::Error> {
+        let datasets = parse_datasets(matches)?;
         let datasets: Arc<[Dataset]> = datasets.into();
 
-        let operation = if cmdpresent(&arg, "create") {
+        let operation = if matches.get_flag("create") {
             Operations::Create { datasets }
-        } else if cmdpresent(&arg, "mount") {
-            if cmdpresent(&arg, "recursive") {
-                Operations::Mount {
-                    datasets,
-                    recursive: true,
-                }
-            } else {
-                Operations::Mount {
-                    datasets,
-                    recursive: false,
-                }
+        } else if matches.get_flag("mount") {
+            Operations::Mount {
+                datasets,
+                recursive: matches.get_flag("recursive"),
             }
-        } else if cmdpresent(&arg, "print") {
-            let mut recursive = false;
-            let mut printwithname = false;
-            if cmdpresent(&arg, "recursive") {
-                recursive = true;
-            }
-            if cmdpresent(&arg, "printwithname") {
-                printwithname = true;
-            }
+        } else if matches.get_flag("print") {
             Operations::PrintDataset {
                 datasets,
-                recursive: recursive,
-                printwithname: printwithname,
+                recursive: matches.get_flag("recursive"),
+                printwithname: matches.get_flag("printwithname"),
             }
         } else {
             Operations::PrintHelp
         };
 
-        let operationmode = if cmdpresent(&arg, "auto") {
-            OperationMode::Auto {
-                operation: operation,
-            }
+        let operation = if matches.get_flag("auto") {
+            OperationMode::Auto { operation }
         } else {
-            OperationMode::Manual {
-                operation: operation,
-            }
+            OperationMode::Manual { operation }
         };
 
-        // The default mode is Password.
-        #[allow(unused_mut)]
-        let mut second_factor = TwoFactorMode::Password;
-        // if yubikey feature is enabled, check for Yubikey 2FA mode.
-        if cmdpresent(&arg, "yubikey") {
-            if !cfg!(feature = "yubikey") {
-                return Err(clap::Error::raw(
-                    clap::error::ErrorKind::MissingRequiredArgument,
-                    "Yubikey feature is disabled at compile.",
-                ));
-            }
-            second_factor = TwoFactorMode::Yubikey {
-                yslot,
-                serial: yubiserial,
-            };
-        };
-
-        #[cfg(feature = "file")]
-        if cmdpresent(&arg, "keyfile") {
-            let file = file.expect(shavee_core::UNREACHABLE_CODE);
-            if file.starts_with(".") {
-                eprintln!("File PATH must be absolute eg. \"/mnt/a/test.jpg\"");
-                return Err(clap::Error::new(clap::error::ErrorKind::ValueValidation));
-            }
-            second_factor = TwoFactorMode::File { file, port, size };
-        };
+        let second_factor = parse_second_factor(matches)?;
 
         Ok(CliArgs {
-            operation: operationmode,
-            second_factor: second_factor,
+            operation,
+            second_factor,
         })
     }
 }
 
-fn cmdpresent(args: &ArgMatches, cmd: &str) -> bool {
-    match args.value_source(cmd) {
-        Some(s) => {
-            if s != clap::parser::ValueSource::DefaultValue {
-                return true;
-            }
-        }
-        None => return false,
-    };
+fn cli() -> Command {
+    Command::new(crate_name!())
+        .about(crate_description!())
+        .author(crate_authors!())
+        .version(crate_version!())
+        .arg_required_else_help(true)
+        .args([
+            Arg::new("create")
+                .short('c')
+                .long("create")
+                .env(SHAVEE_CREATE)
+                .action(ArgAction::SetTrue)
+                .requires("zset")
+                .next_line_help(true)
+                .help("Create/Change key of a ZFS dataset with the derived encryption key. Must be used with --zset"),
+            Arg::new("zset")
+                .short('z')
+                .long("zset")
+                .env(SHAVEE_ZFS_DATASET)
+                .num_args(1..)
+                .value_name("ZFS dataset")
+                .required(true)
+                .next_line_help(true)
+                .help("ZFS Dataset eg. \"zroot/data/home\"\n\
+                       If present in conjunction with any of the other options, it will try to unlock and mount the \
+                       given dataset with the derived key instead of printing it. Takes zfs dataset path as argument."),
+            Arg::new("yubikey")
+                .short('y')
+                .long("yubi")
+                .env(SHAVEE_YUBIKEY)
+                .num_args(0..=1)
+                .value_name("Yubikey Serial")
+                .value_parser(ValueParser::new(yubikey_serial_parser))
+                .help("Use Yubikey HMAC as second factor")
+                .hide(!cfg!(feature = "yubikey"))
+                .conflicts_with("keyfile"),
+            Arg::new("slot")
+                .short('s')
+                .long("slot")
+                .env(SHAVEE_YUBIKEY_SLOT)
+                .num_args(1)
+                .help("Yubikey HMAC Slot")
+                .value_name("HMAC slot")
+                .default_value("2")
+                .value_parser(PossibleValuesParser::new(YUBI_SLOTS))
+                .hide(!cfg!(feature = "yubikey"))
+                .requires("yubikey"),
+            Arg::new("print")
+                .short('p')
+                .long("print")
+                .env(SHAVEE_MODE_PRINT)
+                .action(ArgAction::SetTrue)
+                .help("Print Secret key for a Dataset")
+                .requires("zset"),
+            Arg::new("mount")
+                .short('m')
+                .long("mount")
+                .env(SHAVEE_MODE_MOUNT)
+                .action(ArgAction::SetTrue)
+                .help("Unlock and Mount Dataset")
+                .requires("zset"),
+            Arg::new("printwithname")
+                .short('d')
+                .long("dataset")
+                .env(SHAVEE_MODE_PRINT_WITH_NAME)
+                .action(ArgAction::SetTrue)
+                .help("Print Secret with Dataset name.")
+                .requires("zset")
+                .requires("print"),
+            Arg::new("auto")
+                .short('a')
+                .long("auto")
+                .env(SHAVEE_AUTO_DETECT)
+                .action(ArgAction::SetTrue)
+                .help("Try to automatically guess the unlock config for a dataset")
+                .conflicts_with("create")
+                .requires("zset")
+                .requires("recursivegroup"),
+            Arg::new("recursive")
+                .short('r')
+                .long("recursive")
+                .env(SHAVEE_RECURSIVE)
+                .action(ArgAction::SetTrue)
+                .help("Perform Mount or Print Operations recursively")
+                .requires("zset")
+                .requires("recursivegroup"),
+            Arg::new("keyfile")
+                .short('f')
+                .long("file")
+                .env(SHAVEE_ZFS_KEYFILE)
+                .help("Use any file as second factor, takes filepath, SFTP or a HTTP(S) location as an argument. \
+                       If SIZE is entered, the first SIZE in bytes will be used to generate hash. It must be number between \
+                       1 and 2^(64).")
+                .hide(!cfg!(feature = "file"))
+                .value_name("FILE|ADDRESS [SIZE]")
+                .num_args(1..=2)
+                .conflicts_with("yubikey"),
+            Arg::new("port")
+                .short('P')
+                .long("port")
+                .env(SHAVEE_FILE_PORT)
+                .num_args(1)
+                .value_name("port number")
+                .hide(!cfg!(feature = "file"))
+                .requires("keyfile")
+                .value_parser(clap::value_parser!(u16))
+                .help("Set port for HTTP(S) and SFTP requests"),
+        ])
+        .group(
+            ArgGroup::new("recursivegroup")
+                .args(["mount", "print"])
+                .multiple(false),
+        )
+}
 
-    false
+fn parse_datasets(matches: &ArgMatches) -> Result<Vec<Dataset>, clap::Error> {
+    matches
+        .get_many::<String>("zset")
+        .unwrap_or_default()
+        .map(|s| {
+            let d = s.trim_end_matches('/');
+            Dataset::new(d.to_string())
+        })
+        .collect::<std::result::Result<Vec<_>, _>>()
+        .map_err(|e| clap::Error::raw(clap::error::ErrorKind::InvalidValue, e.to_string()))
+}
+
+fn parse_second_factor(matches: &ArgMatches) -> Result<TwoFactorMode, clap::Error> {
+    if matches.contains_id("yubikey") {
+        if !cfg!(feature = "yubikey") {
+            return Err(clap::Error::raw(
+                clap::error::ErrorKind::MissingRequiredArgument,
+                "Yubikey feature is disabled at compile.",
+            ));
+        }
+
+        #[cfg(feature = "yubikey")]
+        {
+            let yslot = matches
+                .get_one::<String>("slot")
+                .and_then(|s| s.parse::<u8>().ok());
+            let serial = matches.get_one::<u32>("yubikey").copied();
+            return Ok(TwoFactorMode::Yubikey { yslot, serial });
+        }
+    }
+
+    if matches.contains_id("keyfile") {
+        if !cfg!(feature = "file") {
+            return Err(clap::Error::raw(
+                clap::error::ErrorKind::MissingRequiredArgument,
+                "File feature is disabled at compile.",
+            ));
+        }
+
+        #[cfg(feature = "file")]
+        {
+            let file_args: Vec<String> = matches
+                .get_many::<String>("keyfile")
+                .expect("keyfile present but no values")
+                .cloned()
+                .collect();
+
+            let (file, size) = shavee_core::parse_file_size_arguments(&file_args).map_err(|e| {
+                clap::Error::raw(clap::error::ErrorKind::InvalidValue, e.to_string())
+            })?;
+
+            if file.starts_with('.') {
+                eprintln!("File PATH must be absolute eg. \"/mnt/a/test.jpg\"");
+                return Err(clap::Error::new(clap::error::ErrorKind::ValueValidation));
+            }
+
+            let port = matches.get_one::<u16>("port").copied().filter(|&p| p != 0);
+
+            return Ok(TwoFactorMode::File { file, port, size });
+        }
+    }
+
+    Ok(TwoFactorMode::Password)
 }
 
 fn yubikey_serial_parser(serial: &str) -> Result<u32, std::io::Error> {
     if serial.len() != 8 {
         return Err(std::io::Error::new(
             std::io::ErrorKind::InvalidInput,
-            "Inavlid Serial Length",
+            "Invalid Serial Length",
         ));
     }
-    let serial = match serial.parse::<u32>() {
-        Ok(s) => s,
-        Err(_) => {
-            return Err(std::io::Error::new(
-                std::io::ErrorKind::InvalidInput,
-                "Inavlid Serial",
-            ))
-        }
-    };
-
-    Ok(serial)
+    serial
+        .parse::<u32>()
+        .map_err(|_| std::io::Error::new(std::io::ErrorKind::InvalidInput, "Invalid Serial"))
 }
 // This section implements unit tests for the functions in this module.
 // Any code change in this module must pass unit tests below.

@@ -2,10 +2,51 @@
 extern crate pamsm;
 
 use pamsm::{Pam, PamError, PamFlags, PamLibExt, PamServiceModule};
-#[cfg(feature = "file")]
 use shavee_core::zfs::Dataset;
-use std::{io::Write, process::Command};
+use std::{error::Error, io::Write, process::Command};
 struct PamShavee;
+
+impl PamShavee {
+    fn perform_authentication(pam: &Pam, args: &[String]) -> Result<(), Box<dyn Error>> {
+        let dataset_name = get_user_dataset_name(pam, args).map_err(|e| e.to_string())?;
+        let password = unwrap_pam_user_pass(pam.get_authtok(None), PamError::AUTHINFO_UNAVAIL)
+            .map_err(|e| format!("PAM error getting password: {}", e))?;
+
+        let mut child = Command::new("shavee")
+            .arg("-marz")
+            .arg(&dataset_name)
+            .stdin(std::process::Stdio::piped())
+            .stderr(std::process::Stdio::piped())
+            .spawn()?;
+
+        if let Some(mut stdin) = child.stdin.take() {
+            stdin.write_all(password.as_bytes())?;
+        } else {
+            return Err("Failed to open child stdin".into());
+        }
+
+        let output = child.wait_with_output()?;
+
+        if output.status.success() {
+            Ok(())
+        } else {
+            let stderr = String::from_utf8_lossy(&output.stderr);
+            Err(format!(
+                "shavee command failed with status {} and stderr: {}",
+                output.status, stderr
+            )
+            .into())
+        }
+    }
+
+    fn perform_close_session(pam: &Pam, args: &[String]) -> Result<(), Box<dyn Error>> {
+        let dataset_name = get_user_dataset_name(pam, args).map_err(|e| e.to_string())?;
+        let dataset = Dataset::new(dataset_name)?;
+        dataset.unmount()?;
+        dataset.unload_key(true)?;
+        Ok(())
+    }
+}
 
 // TODO: Need unit tests implemented for the PAM module functions
 impl PamServiceModule for PamShavee {
@@ -14,104 +55,23 @@ impl PamServiceModule for PamShavee {
     }
 
     fn close_session(pam: Pam, _flags: PamFlags, args: Vec<String>) -> PamError {
-        let mut dataset_name = args[0].clone();
-        if dataset_name.ends_with("/") {
-            dataset_name.pop();
-        };
-
-        match unwrap_pam_user_pass(pam.get_user(Some("Username: ")), PamError::USER_UNKNOWN) {
-            Ok(user) => {
-                dataset_name.push('/');
-                dataset_name.push_str(user);
-            }
-            Err(error) => return error,
-        };
-
-        let dataset = match Dataset::new(dataset_name) {
-            Ok(d) => d,
-            Err(_) => return PamError::SESSION_ERR,
-        };
-
-        match dataset.umount() {
-            Ok(dataset) => match dataset.unloadkeys_recursive() {
-                Ok(_) => return PamError::SUCCESS,
-                Err(e) => {
-                    eprintln!("{}", e);
-                    return PamError::SESSION_ERR;
-                }
-            },
+        match Self::perform_close_session(&pam, &args) {
+            Ok(_) => PamError::SUCCESS,
             Err(e) => {
-                eprintln!("{}", e);
-                return PamError::SESSION_ERR;
+                eprintln!("shavee-pam: session close error: {}", e);
+                PamError::SESSION_ERR
             }
         }
     }
 
     fn authenticate(pam: Pam, _flags: PamFlags, args: Vec<String>) -> PamError {
-        let mut dataset_name = args[0].clone();
-        if dataset_name.ends_with("/") {
-            dataset_name.pop();
-        };
-
-        match unwrap_pam_user_pass(pam.get_user(Some("Username: ")), PamError::USER_UNKNOWN) {
-            Ok(user) => {
-                dataset_name.push('/');
-                dataset_name.push_str(user);
-            }
-            Err(error) => return error,
-        };
-
-        let password = match unwrap_pam_user_pass(pam.get_authtok(None), PamError::AUTHINFO_UNAVAIL)
-        {
-            Ok(slice) => slice.to_string(),
-            Err(error) => {
-                eprintln!("Error Getting Password: {}", error);
-                return error;
-            }
-        };
-
-        let mut exec = match Command::new("shavee")
-            .arg("-marz")
-            .arg(dataset_name)
-            .stdin(std::process::Stdio::piped())
-            .stderr(std::process::Stdio::piped())
-            .spawn()
-        {
-            Ok(child) => child,
+        match Self::perform_authentication(&pam, &args) {
+            Ok(_) => PamError::SUCCESS,
             Err(e) => {
-                eprintln!("Error: {}", e);
-                return PamError::AUTH_ERR;
+                eprintln!("shavee-pam: authentication error: {}", e);
+                PamError::AUTH_ERR
             }
-        };
-
-        let pamstdin = match exec.stdin.as_mut() {
-            Some(s) => s,
-            None => {
-                eprintln!("Failed to open child stdin");
-                return PamError::AUTH_ERR;
-            }
-        };
-        match pamstdin.write_all(password.as_str().as_bytes()) {
-            Ok(()) => {}
-            Err(e) => {
-                eprintln!("Error: {}", e);
-                return PamError::AUTH_ERR;
-            }
-        };
-
-        let res = match exec.wait() {
-            Ok(ok) => ok,
-            Err(e) => {
-                eprintln!("Error: {}", e);
-                return PamError::AUTH_ERR;
-            }
-        };
-
-        if res.success() {
-            return PamError::SUCCESS;
         }
-
-        PamError::AUTH_ERR
     }
 
     fn setcred(_: Pam, _: PamFlags, _: Vec<String>) -> PamError {
@@ -119,25 +79,41 @@ impl PamServiceModule for PamShavee {
     }
 }
 
-fn unwrap_pam_user_pass(
-    pam_key: Result<Option<&std::ffi::CStr>, PamError>,
-    pam_error: PamError,
-) -> Result<&str, PamError> {
-    let key = match pam_key {
-        Ok(None) => return Err(pam_error),
-        Ok(value) => match value.unwrap().to_str() {
-            Ok(s) => s,
-            Err(error) => {
-                eprintln!("Error {}!", error);
-                return Err(pam_error);
-            }
-        },
-        Err(error) => {
-            eprintln!("Error {}!", error);
-            return Err(error);
-        }
-    };
-    Ok(key)
+fn get_user_dataset_name(pam: &Pam, args: &[String]) -> Result<String, PamError> {
+    if args.is_empty() {
+        eprintln!("PAM module arguments are missing: no base dataset provided.");
+        return Err(PamError::SERVICE_ERR);
+    }
+
+    let mut dataset_name = args[0].clone();
+    dataset_name.truncate(dataset_name.trim_end_matches('/').len());
+
+    let user = unwrap_pam_user_pass(pam.get_user(Some("Username: ")), PamError::USER_UNKNOWN)?;
+
+    dataset_name.push('/');
+    dataset_name.push_str(user);
+    Ok(dataset_name)
 }
 
-pam_module!(PamShavee);
+fn unwrap_pam_user_pass<'a>(
+    pam_key: Result<Option<&'a std::ffi::CStr>, PamError>,
+    pam_error: PamError,
+) -> Result<&'a str, PamError> {
+    let c_str = pam_key
+        .map_err(|e| {
+            eprintln!("Error getting PAM item: {}", e);
+            e
+        })?
+        .ok_or(pam_error)?;
+
+    c_str.to_str().map_err(|e| {
+        eprintln!("Error converting PAM string: {}", e);
+        pam_error
+    })
+}
+
+#[allow(unsafe_op_in_unsafe_fn)]
+mod pam_entry {
+    use super::*;
+    pam_module!(PamShavee);
+}

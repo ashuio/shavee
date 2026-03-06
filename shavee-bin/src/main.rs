@@ -3,10 +3,10 @@ use args::*;
 use atty::Stream;
 use challenge_response::{ChallengeResponse, Device};
 #[cfg(feature = "file")]
-use shavee_core::filehash::get_filehash;
-use shavee_core::yubikey::{fetch_yubikeys, yubikey_get_hash};
-use shavee_core::zfs::{get_max_namesize, Dataset};
-use shavee_core::{structs::TwoFactorMode, zfs::resolve_recursive};
+use shavee_core::filehash;
+use shavee_core::structs::TwoFactorMode;
+use shavee_core::yubikey;
+use shavee_core::zfs::{self, Dataset};
 use std::collections::HashMap;
 use std::io::stdin;
 use std::sync::{Arc, Mutex};
@@ -27,9 +27,9 @@ async fn main() -> std::process::ExitCode {
             shavee_core::trace("Exited successfully with no message!");
             0
         } // exit with no error code
-        Ok(passphrase) => {
+        Ok(Some(passphrase)) => {
             shavee_core::trace("Exited successfully with a message!");
-            println!("{}", passphrase.unwrap()); // print password if asked
+            println!("{}", passphrase); // print password if asked
             0 // then exit with no error code
         }
         Err(error) => {
@@ -42,327 +42,162 @@ async fn main() -> std::process::ExitCode {
 }
 
 async fn run(args: CliArgs) -> Result<Option<String>, Box<dyn std::error::Error>> {
-    let mut password = String::new();
-
-    // Check if input is piped and read accordingly
-
-    if atty::is(Stream::Stdin) {
-        password = rpassword::prompt_password("Dataset Password: ").map_err(|e| e.to_string())?;
-    } else {
-        stdin().read_line(&mut password)?;
-    };
-
-    let password = password.trim().to_string();
-
-    // prompt user for password, in case of an error, terminate this function and
-    // return the error to main()
-
+    let password = get_password("Dataset Password: ")?;
     shavee_core::trace("Password has been entered successfully.");
-
     shavee_core::trace("Operation Mode:");
 
-    // Use this variable as the function return to be used for printing to stdio if needed.
-    let mut exit_result: Option<String> = None;
-
     match args.operation {
-        OperationMode::Auto { operation } => match operation {
-            Operations::Mount {
-                datasets,
-                recursive,
-            } => {
-                let mut sets: Arc<[Dataset]> = datasets;
-                if recursive {
-                    sets = resolve_recursive(&sets)?;
-                }
-                let maxlength = get_max_namesize(&sets);
-
-                // fetch all available Yubikeys
-                let yubikeys = fetch_yubikeys().ok();
-
-                let sethashes = get_key_hash(&sets, password, yubikeys, None).await?;
-                let mut errors: Vec<(String, String)> = vec![];
-                for d in sets.iter() {
-                    let pass = sethashes.get(&d.to_string()).unwrap();
-                    if pass.len() == 86 {
-                        match d.loadkey(pass) {
-                            Ok(_) => {
-                                let _ = d.mount();
-                            }
-                            Err(_) => {}
-                        }
-                    } else {
-                        errors.push((d.to_string(), pass.to_owned()));
-                    }
-                }
-
-                if !errors.is_empty() {
-                    eprintln!("\x1b[1m{:<maxlength$}    {}\x1b[0m", "Dataset", "Error");
-                    eprintln!();
-                    for error in errors {
-                        eprintln!("{:<maxlength$}    {}", error.0, error.1);
-                    }
-
-                    let e = Box::new(std::io::Error::new(
-                        std::io::ErrorKind::Other,
-                        "Failed to mount Datasets",
-                    ));
-                    return Err(e);
-                }
-                exit_result = None
+        OperationMode::Auto { operation } => process_mount_print(operation, password, None).await,
+        OperationMode::Manual { operation } => match operation {
+            Operations::Create { datasets } => {
+                process_create(datasets, password, args.second_factor).await
             }
-            Operations::PrintDataset {
-                datasets,
-                recursive,
-                printwithname,
-            } => {
-                let mut sets: Arc<[Dataset]> = datasets;
-                if recursive {
-                    sets = resolve_recursive(&sets)?;
-                }
-                let maxlength = get_max_namesize(&sets);
-
-                let mut setnames: Vec<String> = vec![];
-
-                for set in sets.iter() {
-                    setnames.push(set.to_string())
-                }
-
-                let yubikeys = fetch_yubikeys().ok();
-
-                let sethashes = get_key_hash(&sets, password, yubikeys, None).await?;
-
-                let mut errors: Vec<(String, String)> = vec![];
-                if printwithname {
-                    println!("\x1b[1m{:<maxlength$}    {}\x1b[0m", "Dataset", "Key");
-                    println!();
-                }
-                for dataset in setnames {
-                    let pass = sethashes.get(&dataset).unwrap();
-                    if pass.len() == 86 {
-                        if printwithname {
-                            println!("{:<maxlength$}    {}", dataset, pass);
-                        } else {
-                            println!("{}", sethashes.get(&dataset).unwrap());
-                        }
-                    } else {
-                        errors.push((dataset.to_string(), pass.to_owned()));
-                    }
-                }
-                if !errors.is_empty() {
-                    eprintln!("\x1b[1m{:<maxlength$}    {}\x1b[0m", "Dataset", "Error");
-                    eprintln!();
-                    for error in errors {
-                        eprintln!("{:<maxlength$}    {}", error.0, error.1);
-                    }
-
-                    let e = Box::new(std::io::Error::new(
-                        std::io::ErrorKind::Other,
-                        "Failed to mount Datasets",
-                    ));
-                    return Err(e);
-                }
-                exit_result = None
-            }
-
-            Operations::Create { .. } => {
-                eprintln!("{}", shavee_core::UNREACHABLE_CODE);
-            }
-            Operations::PrintHelp => {
-                eprintln!("{}", shavee_core::UNREACHABLE_CODE);
-            }
+            _ => process_mount_print(operation, password, Some(args.second_factor)).await,
         },
+    }
+}
 
-        OperationMode::Manual { operation } => {
-            match operation {
-                Operations::Create { datasets } => {
-                    // Ask and check for password a second time if input is stdin
-                    if atty::is(Stream::Stdin) {
-                        let binding = rpassword::prompt_password("Retype  Password: ")
-                            .map_err(|e| e.to_string())?;
+fn get_password(prompt: &str) -> Result<String, Box<dyn std::error::Error>> {
+    let password = if atty::is(Stream::Stdin) {
+        rpassword::prompt_password(prompt).map_err(|e| e.to_string())?
+    } else {
+        let mut input = String::new();
+        stdin().read_line(&mut input)?;
+        input
+    };
+    Ok(password.trim().to_string())
+}
 
-                        if password != binding.to_string() {
-                            return Err("Passwords do not match.".into());
-                        }
-                    };
-
-                    for dataset in datasets.iter() {
-                        shavee_core::trace(&format!(
-                            "\tCreate ZFS dataset: \"{}\" using \"{:?}\" method.",
-                            dataset.to_string(),
-                            args.second_factor
-                        ));
-                    }
-
-                    for dataset in datasets.iter() {
-                        let mut secondfactor = args.second_factor.clone();
-                        let salt = shavee_core::logic::generate_salt();
-                        match args.second_factor.clone() {
-                            #[cfg(feature = "yubikey")]
-                            TwoFactorMode::Yubikey { yslot, serial } => {
-                                let yubikey = if serial == None {
-                                    let key = ChallengeResponse::new()?.find_device()?;
-                                    secondfactor = TwoFactorMode::Yubikey {
-                                        yslot: yslot,
-                                        serial: key.serial,
-                                    };
-                                    Ok(key)
-                                } else {
-                                    ChallengeResponse::new()?
-                                        .find_device_from_serial(serial.unwrap())
-                                }?;
-
-                                let yubikey = Mutex::new(yubikey);
-
-                                dataset.clone().yubi_create(
-                                    password.as_bytes(),
-                                    yslot,
-                                    &yubikey,
-                                    &salt,
-                                )?;
-                            }
-                            #[cfg(feature = "file")]
-                            TwoFactorMode::File {
-                                ref file,
-                                port,
-                                size,
-                            } => {
-                                let filehash =
-                                    get_filehash(file.clone().as_str(), port, size, &salt[..])?;
-                                dataset.clone().file_create(
-                                    password.as_bytes(),
-                                    filehash.clone(),
-                                    &salt,
-                                )?
-                            }
-                            TwoFactorMode::Password => {
-                                let password_mode_hash = shavee_core::logic::password_mode_hash(
-                                    &password.as_bytes(),
-                                    &salt,
-                                )?;
-                                dataset.clone().create(&password_mode_hash)?;
-                                // store generated random salt as base64 encoded in ZFS property
-                            }
-                        }
-                        dataset.set_property_2fa(
-                            secondfactor,
-                            &base64::Engine::encode(&shavee_core::logic::BASE64_ENGINE, salt),
-                        )?;
-                    }
-
-                    exit_result = None;
-                }
-                Operations::Mount {
-                    datasets,
-                    recursive,
-                } => {
-                    for dataset in datasets.iter() {
-                        shavee_core::trace(&format!(
-                            "\tMount ZFS dataset: \"{}\".",
-                            dataset.to_string()
-                        ));
-                    }
-
-                    let mut sets: Arc<[Dataset]> = datasets;
-                    if recursive {
-                        sets = resolve_recursive(&sets)?;
-                    }
-                    let maxlength = get_max_namesize(&sets);
-
-                    let yubikeys = fetch_yubikeys().ok();
-
-                    let sethashes =
-                        get_key_hash(&sets, password, yubikeys, Some(args.second_factor)).await?;
-
-                    let mut errors: Vec<(String, String)> = vec![];
-                    for d in sets.iter() {
-                        let pass = sethashes.get(&d.to_string()).unwrap();
-                        if pass.len() == 86 {
-                            match d.loadkey(pass) {
-                                Ok(_) => {
-                                    let _ = d.mount();
-                                }
-                                Err(_) => {}
-                            }
-                        } else {
-                            errors.push((d.to_string(), pass.to_owned()));
-                        }
-                    }
-
-                    if !errors.is_empty() {
-                        eprintln!("\x1b[1m{:<maxlength$}    {}\x1b[0m", "Dataset", "Error");
-                        eprintln!();
-                        for error in errors {
-                            eprintln!("{:<maxlength$}    {}", error.0, error.1);
-                        }
-
-                        let e = Box::new(std::io::Error::new(
-                            std::io::ErrorKind::Other,
-                            "Failed to mount Datasets",
-                        ));
-                        return Err(e);
-                    }
-                    exit_result = None
-                }
-                Operations::PrintDataset {
-                    datasets,
-                    recursive,
-                    printwithname,
-                } => {
-                    let mut sets: Arc<[Dataset]> = datasets;
-                    if recursive {
-                        sets = resolve_recursive(&sets)?;
-                    }
-                    let maxlength = get_max_namesize(&sets);
-
-                    let mut setnames: Vec<String> = vec![];
-
-                    for set in sets.iter() {
-                        setnames.push(set.to_string())
-                    }
-
-                    let yubikeys = fetch_yubikeys().ok();
-                    let sethashes =
-                        get_key_hash(&sets, password, yubikeys, Some(args.second_factor)).await?;
-                    let mut errors: Vec<(String, String)> = vec![];
-                    if printwithname {
-                        println!("\x1b[1m{:<maxlength$}    {}\x1b[0m", "Dataset", "Key");
-                        println!();
-                    }
-                    for dataset in setnames {
-                        let pass = sethashes.get(&dataset).unwrap();
-                        if pass.len() == 86 {
-                            if printwithname {
-                                println!("{:<maxlength$}    {}", dataset, pass);
-                            } else {
-                                println!("{}", sethashes.get(&dataset).unwrap());
-                            }
-                        } else {
-                            errors.push((dataset.to_string(), pass.to_owned()));
-                        }
-                    }
-                    if !errors.is_empty() {
-                        eprintln!("\x1b[1m{:<maxlength$}    {}\x1b[0m", "Dataset", "Error");
-                        eprintln!();
-                        for error in errors {
-                            eprintln!("{:<maxlength$}    {}", error.0, error.1);
-                        }
-
-                        let e = Box::new(std::io::Error::new(
-                            std::io::ErrorKind::Other,
-                            "Failed to mount Datasets",
-                        ));
-                        return Err(e);
-                    }
-                    exit_result = None
-                }
-                Operations::PrintHelp => {
-                    eprintln!("{}", shavee_core::UNREACHABLE_CODE);
-                }
-            };
+async fn process_create(
+    datasets: Arc<[Dataset]>,
+    password: String,
+    second_factor: TwoFactorMode,
+) -> Result<Option<String>, Box<dyn std::error::Error>> {
+    if atty::is(Stream::Stdin) {
+        let confirm =
+            rpassword::prompt_password("Retype  Password: ").map_err(|e| e.to_string())?;
+        if password != confirm.trim() {
+            return Err("Passwords do not match.".into());
         }
+    }
+
+    for dataset in datasets.iter() {
+        shavee_core::trace(&format!(
+            "\tCreate ZFS dataset: \"{}\" using \"{:?}\" method.",
+            dataset.to_string(),
+            second_factor
+        ));
+    }
+
+    for dataset in datasets.iter() {
+        let salt = shavee_core::logic::generate_salt();
+        let mut current_sf = second_factor.clone();
+
+        match &second_factor {
+            #[cfg(feature = "yubikey")]
+            TwoFactorMode::Yubikey { yslot, serial } => {
+                let yubikey = if serial.is_none() {
+                    let key = ChallengeResponse::new()?.find_device()?;
+                    current_sf = TwoFactorMode::Yubikey {
+                        yslot: *yslot,
+                        serial: key.serial,
+                    };
+                    key
+                } else {
+                    ChallengeResponse::new()?.find_device_from_serial(serial.unwrap())?
+                };
+                let yubikey = Mutex::new(yubikey);
+                dataset.yubi_create(password.as_bytes(), *yslot, &yubikey, &salt)?;
+            }
+            #[cfg(feature = "file")]
+            TwoFactorMode::File { file, port, size } => {
+                let filehash = shavee_core::filehash::get_filehash(file, *port, *size, &salt)?;
+                dataset.file_create(password.as_bytes(), filehash, &salt)?;
+            }
+            TwoFactorMode::Password => {
+                let hash = shavee_core::logic::password_mode_hash(password.as_bytes(), &salt)?;
+                dataset.create(&hash)?;
+            }
+        }
+
+        dataset.set_properties_2fa(
+            current_sf,
+            &base64::Engine::encode(&shavee_core::logic::BASE64_ENGINE, salt),
+        )?;
+    }
+
+    Ok(None)
+}
+
+async fn process_mount_print(
+    operation: Operations,
+    password: String,
+    second_factor: Option<TwoFactorMode>,
+) -> Result<Option<String>, Box<dyn std::error::Error>> {
+    let (datasets, recursive, print_with_name) = match operation {
+        Operations::Mount {
+            datasets,
+            recursive,
+        } => (datasets, recursive, None),
+        Operations::PrintDataset {
+            datasets,
+            recursive,
+            printwithname,
+        } => (datasets, recursive, Some(printwithname)),
+        _ => return Ok(None),
     };
 
-    Ok(exit_result)
+    let sets = if recursive {
+        zfs::resolve_recursive(&datasets)?
+    } else {
+        datasets
+    };
+
+    let yubikeys = yubikey::fetch_yubikeys().ok();
+    let sethashes = get_key_hash(&sets, password, yubikeys, second_factor).await?;
+
+    let mut errors = Vec::new();
+    let maxlength = zfs::get_max_namesize(&sets);
+
+    if let Some(true) = print_with_name {
+        println!("\x1b[1m{:<maxlength$}    {}\x1b[0m", "Dataset", "Key");
+        println!();
+    }
+
+    for dataset in sets.iter() {
+        let name = dataset.to_string();
+        if let Some(pass) = sethashes.get(&name) {
+            if pass.len() == 86 {
+                if let Some(with_name) = print_with_name {
+                    if with_name {
+                        println!("{:<maxlength$}    {}", name, pass);
+                    } else {
+                        println!("{}", pass);
+                    }
+                } else {
+                    if dataset.load_key(pass).is_ok() {
+                        let _ = dataset.mount();
+                    }
+                }
+            } else {
+                errors.push((name, pass.clone()));
+            }
+        }
+    }
+
+    if !errors.is_empty() {
+        eprintln!("\x1b[1m{:<maxlength$}    {}\x1b[0m", "Dataset", "Error");
+        eprintln!();
+        for (name, err) in errors {
+            eprintln!("{:<maxlength$}    {}", name, err);
+        }
+        return Err(Box::new(std::io::Error::new(
+            std::io::ErrorKind::Other,
+            "Failed to process some Datasets",
+        )));
+    }
+
+    Ok(None)
 }
 
 async fn get_key_hash(
@@ -398,608 +233,101 @@ fn get_keys(
     second_factor: Option<TwoFactorMode>,
     yubikeys: Option<Arc<[Mutex<Device>]>>,
 ) -> Result<[String; 2], (String, Box<dyn std::error::Error + Send>)> {
-    let salt = match shavee_core::logic::get_salt(Some(&dataset)) {
-        Ok(salt) => salt,
-        Err(e) => {
-            let e = Box::new(std::io::Error::new(
+    let salt = shavee_core::logic::get_salt(Some(&dataset)).map_err(|e| {
+        (
+            dataset.to_string(),
+            Box::new(std::io::Error::new(
                 std::io::ErrorKind::Other,
                 e.to_string(),
-            ));
-            return Err((dataset.to_string(), e));
-        }
-    };
+            )) as Box<dyn std::error::Error + Send>,
+        )
+    })?;
 
-    let second_factor = match second_factor.clone() {
+    let second_factor = match second_factor {
         Some(sf) => sf,
-        None => match dataset.get_property_2fa() {
-            Ok(sf) => sf,
-            Err(e) => {
-                let e = Box::new(std::io::Error::new(
+        None => dataset.get_property_2fa().map_err(|e| {
+            (
+                dataset.to_string(),
+                Box::new(std::io::Error::new(
                     std::io::ErrorKind::Other,
                     e.to_string(),
-                ));
-                return Err((dataset.to_string(), e));
-            }
-        },
+                )) as Box<dyn std::error::Error + Send>,
+            )
+        })?,
     };
 
     let passphrase = match second_factor {
         #[cfg(feature = "yubikey")]
         TwoFactorMode::Yubikey { yslot, serial } => {
-            let yubikey = match &yubikeys {
-                Some(key) => match serial {
-                    Some(s) => match shavee_core::yubikey::yubikey_get_from_serial(&key, s) {
-                        Ok(ok) => ok,
-                        Err(_) => &key[0],
-                    },
-                    None => &key[0],
-                },
-                None => {
-                    let e = Box::new(std::io::Error::new(
-                        std::io::ErrorKind::Other,
-                        "Device Not Found".to_string(),
-                    ));
-                    return Err((dataset.to_string(), e));
-                }
-            };
+            let yubikey = yubikeys
+                .as_ref()
+                .and_then(|keys| {
+                    if let Some(s) = serial {
+                        shavee_core::yubikey::yubikey_get_from_serial(&keys[..], s)
+                            .ok()
+                            .or_else(|| keys.first())
+                    } else {
+                        keys.first()
+                    }
+                })
+                .ok_or_else(|| {
+                    (
+                        dataset.to_string(),
+                        Box::new(std::io::Error::new(
+                            std::io::ErrorKind::Other,
+                            "Device Not Found",
+                        )) as Box<dyn std::error::Error + Send>,
+                    )
+                })?;
 
-            let yubihash = match yubikey_get_hash(password.as_bytes(), yslot, &salt, &yubikey) {
-                Ok(ok) => ok,
-                Err(e) => {
-                    let e = Box::new(std::io::Error::new(
-                        std::io::ErrorKind::Other,
-                        e.to_string(),
-                    ));
-                    return Err((dataset.to_string(), e));
-                }
-            };
+            let yubihash = yubikey::yubikey_get_hash(password.as_bytes(), yslot, &salt, yubikey)
+                .map_err(|e| {
+                    (
+                        dataset.to_string(),
+                        Box::new(std::io::Error::new(
+                            std::io::ErrorKind::Other,
+                            e.to_string(),
+                        )) as Box<dyn std::error::Error + Send>,
+                    )
+                })?;
 
             base64::Engine::encode(&shavee_core::logic::BASE64_ENGINE, yubihash)
         }
         #[cfg(feature = "file")]
-        TwoFactorMode::File {
-            ref file,
-            port,
-            size,
-        } => {
-            let filehash = match get_filehash(file.clone().as_str(), port, size, &salt[..]) {
-                Ok(fh) => fh,
-                Err(e) => {
-                    let e = Box::new(std::io::Error::new(
+        TwoFactorMode::File { file, port, size } => {
+            let filehash = filehash::get_filehash(&file, port, size, &salt).map_err(|e| {
+                (
+                    dataset.to_string(),
+                    Box::new(std::io::Error::new(
                         std::io::ErrorKind::Other,
                         e.to_string(),
-                    ));
-                    return Err((dataset.to_string(), e));
-                }
-            };
-            match shavee_core::logic::file_key_calculation(
-                &password.as_bytes(),
-                filehash.clone(),
-                &salt,
-            ) {
-                Ok(s) => s,
-                Err(e) => {
-                    let e = Box::new(std::io::Error::new(
-                        std::io::ErrorKind::Other,
-                        e.to_string(),
-                    ));
-                    return Err((dataset.to_string(), e));
-                }
-            }
+                    )) as Box<dyn std::error::Error + Send>,
+                )
+            })?;
+            shavee_core::logic::file_key_calculation(password.as_bytes(), filehash, &salt).map_err(
+                |e| {
+                    (
+                        dataset.to_string(),
+                        Box::new(std::io::Error::new(
+                            std::io::ErrorKind::Other,
+                            e.to_string(),
+                        )) as Box<dyn std::error::Error + Send>,
+                    )
+                },
+            )?
         }
         TwoFactorMode::Password => {
-            match shavee_core::logic::password_mode_hash(&password.as_bytes(), &salt) {
-                Ok(p) => p,
-                Err(e) => {
-                    let e = Box::new(std::io::Error::new(
+            shavee_core::logic::password_mode_hash(password.as_bytes(), &salt).map_err(|e| {
+                (
+                    dataset.to_string(),
+                    Box::new(std::io::Error::new(
                         std::io::ErrorKind::Other,
                         e.to_string(),
-                    ));
-                    return Err((dataset.to_string(), e));
-                }
-            }
+                    )) as Box<dyn std::error::Error + Send>,
+                )
+            })?
         }
     };
 
     Ok([dataset.to_string(), passphrase])
 }
-
-// #[cfg(test)]
-// mod tests {
-//     use super::*;
-//     use shavee_core::zfs::Dataset;
-//     use std::io::Write;
-//     use stdio_override;
-//     use tempfile;
-
-//     #[test]
-//     fn integration_tests() {
-//         // initializing logs
-//         shavee_core::trace_init(false);
-//         // All integration tests will be executed sequentially
-
-//         // **Integration Test**: Print Password
-//         {
-//             // construct the needed Struct related to this unit test
-//             let print_password = CliArgs {
-//                 operation: OperationMode::Manual {
-//                     operation: Operations::Print,
-//                 },
-//                 second_factor: TwoFactorMode::Password,
-//             };
-
-//             // use a temp file to override stdin for password entry
-//             let mut password_file = tempfile::NamedTempFile::new()
-//                 .expect("Couldn't make a temp file! Test terminating early!");
-
-//             // generate the temp file and fill it with the password
-//             // and feed "test" as password
-//             password_file
-//                 .write_all(b"test")
-//                 .expect("Couldn't write to the temp file! Test terminating early!");
-
-//             let password_file_path = password_file.into_temp_path();
-//             let password_file_path = password_file_path
-//                 .to_str()
-//                 .expect("Unknown temp file path! Test terminating early!");
-
-//             // feed password_file to stdin
-//             let stdin_guard = stdio_override::StdinOverride::override_file(password_file_path);
-
-//             // **Integration Test** run() function and capture its stdout output
-//             let output = run(print_password);
-
-//             // release stdin back to normal
-//             drop(stdin_guard);
-
-//             // **Integration test** check for graceful execution
-//             let output = output.unwrap().unwrap();
-
-//             // verify stdout with the expected result
-//             assert_eq!(
-//                 output,
-//                 "LDa6mHK4xmv37cqoG8B+9M/ZIaEPLDhPQER6nuP7dw8mB1MoKoRkgZCbUNRwXvGwG2UkfWJUUEVOfWzUCCb8JA"
-//             );
-//             // expected output for "test" input
-//         } // END **Integration Test**: Print Password
-
-//         // **Integration Test**: Print File
-//         #[cfg(feature = "file")]
-//         {
-//             // construct the needed Struct related to this unit test
-//             let print_file = CliArgs {
-//                 operation: OperationMode::Manual {
-//                     operation: Operations::Print,
-//                 },
-//                 second_factor: TwoFactorMode::File {
-//                     file: String::from("/dev/zero"), // Zeros
-//                     size: Some(1 << 8),
-//                     port: None,
-//                 },
-//             };
-
-//             // use a temp file to override stdin for password entry
-//             let mut password_file = tempfile::NamedTempFile::new()
-//                 .expect("Couldn't make a temp file! Test terminating early!");
-
-//             // generate the temp file and fill it with the password
-//             // and feed "test" as password
-//             password_file
-//                 .write_all(b"test")
-//                 .expect("Couldn't write to the temp file! Test terminating early!");
-
-//             let password_file_path = password_file.into_temp_path();
-//             let password_file_path = password_file_path
-//                 .to_str()
-//                 .expect("Unknown temp file path! Test terminating early!");
-
-//             // feed password_file to stdin
-//             let stdin_guard = stdio_override::StdinOverride::override_file(password_file_path);
-
-//             // **Integration Test** run() function and capture its stdout output
-//             let output = run(print_file);
-
-//             // release stdin back to normal
-//             drop(stdin_guard);
-
-//             // **Integration test** check for graceful execution
-//             let output = output.unwrap().unwrap();
-
-//             // verify stdout with the expected result
-//             assert_eq!(
-//                 output,
-//                 "oenvfi3+jMSy5kuOzbKzfAsBNi/jHFuD510Q43zJhVNJaBi35mvXEqeUPzdarV1mAlhkFG1C7NJ5/mEAWNOpgg"
-//             );
-//             // expected output for "test" input
-//         } // END **Integration Test**: Print File
-
-//         // **Integration Test**: Create from password then mount it
-//         {
-//             // This test will only run if there is root permission
-//             if !nix::unistd::Uid::effective().is_root() {
-//                 eprintln!("This test needs root permission. Terminating early!");
-//                 return;
-//             }
-
-//             let (zpool_name, temp_folder) = prepare_zpool();
-//             shavee_core::trace(&format!("Temp Zpool name: {:?}", zpool_name));
-//             let mut zpool_with_dataset = zpool_name.to_owned();
-//             zpool_with_dataset.push('/');
-//             zpool_with_dataset.push_str(&random_string(3));
-//             shavee_core::trace(&format!("Temp ZFS dataset path: {:?}", zpool_with_dataset));
-//             let zfs_encrypted_dataset =
-//                 Dataset::new(zpool_with_dataset).expect("ZFS name problem. Test terminated early!");
-//             shavee_core::trace(&format!(
-//                 "Temp encrypted ZFS dataset: {:?}",
-//                 zfs_encrypted_dataset
-//             ));
-
-//             //Output of the Integration test will be stored in these variables to be validated
-//             let create_password_output;
-//             let mount_password_output;
-//             let mount_key_already_loaded_output;
-
-//             // **Integration Test**: create a new encrypted dataset from file
-//             {
-//                 // construct the needed Struct related to this unit test
-//                 let create_password = CliArgs {
-//                     operation: OperationMode::Manual {
-//                         operation: Operations::Create {
-//                             datasets: vec![zfs_encrypted_dataset.clone()],
-//                         },
-//                     },
-//                     second_factor: TwoFactorMode::Password,
-//                 };
-//                 shavee_core::trace(&format!(
-//                     "Simulated CLI arguments action: {:?}",
-//                     create_password
-//                 ));
-
-//                 // use a temp file to override stdin for password entry
-//                 let mut password_file = tempfile::NamedTempFile::new()
-//                     .expect("Couldn't make a temp file! Test terminating early!");
-
-//                 // generate the temp file and fill it with the password
-//                 // and feed "test" as password
-//                 password_file
-//                     .write_all(b"test")
-//                     .expect("Couldn't write to the temp file! Test terminating early!");
-
-//                 let password_file_path = password_file.into_temp_path();
-//                 let password_file_path = password_file_path
-//                     .to_str()
-//                     .expect("Unknown temp file path! Test terminating early!");
-
-//                 // feed password_file to stdin
-//                 let stdin_guard = stdio_override::StdinOverride::override_file(password_file_path);
-
-//                 // **Integration Test** run() function and capture its stdout output
-//                 create_password_output = run(create_password);
-//                 shavee_core::trace(&format!(
-//                     "Output of the cli command: {:?}",
-//                     create_password_output
-//                 ));
-
-//                 // release stdin back to normal
-//                 drop(stdin_guard);
-
-//                 //umount and unload the ZFS key
-//                 zfs_encrypted_dataset
-//                     .umount()
-//                     .expect("ZFS Dataset create from file Integration test failed!")
-//                     .unloadkey()
-//                     .expect("ZFS Dataset create from file Integration test failed!");
-//             } // END of **Integration Test 1**: create a new encrypted dataset from password
-
-//             // **Integration Test**: mount an encrypted dataset from password
-//             {
-//                 // construct the needed Struct related to this unit test
-//                 let mount_password = CliArgs {
-//                     operation: OperationMode::Manual {
-//                         operation: Operations::Mount {
-//                             datasets: vec![zfs_encrypted_dataset.clone()],
-//                             recursive: false,
-//                         },
-//                     },
-//                     second_factor: TwoFactorMode::Password,
-//                 };
-//                 shavee_core::trace(&format!(
-//                     "Simulated CLI arguments action: {:?}",
-//                     mount_password
-//                 ));
-
-//                 // use a temp file to override stdin for password entry
-//                 let mut password_file = tempfile::NamedTempFile::new()
-//                     .expect("Couldn't make a temp file! Test terminating early!");
-
-//                 // generate the temp file and fill it with the password
-//                 // and feed "test" as password
-//                 password_file
-//                     .write_all(b"test")
-//                     .expect("Couldn't write to the temp file! Test terminating early!");
-
-//                 let password_file_path = password_file.into_temp_path();
-//                 let password_file_path = password_file_path
-//                     .to_str()
-//                     .expect("Unknown temp file path! Test terminating early!");
-
-//                 // feed password_file to stdin
-//                 let stdin_guard = stdio_override::StdinOverride::override_file(password_file_path);
-
-//                 // **Integration Test** run() function and capture its stdout output
-//                 mount_password_output = run(mount_password.clone());
-//                 shavee_core::trace(&format!(
-//                     "Output of the cli command: {:?}",
-//                     mount_password_output
-//                 ));
-
-//                 //umount the ZFS only
-//                 zfs_encrypted_dataset
-//                     .umount()
-//                     .expect("ZFS Dataset Mount from file Integration test failed!");
-
-//                 // [Issue #22] try to mount again this time with key already loaded
-//                 mount_key_already_loaded_output = run(mount_password);
-//                 shavee_core::trace(&format!(
-//                     "Output of the cli command: {:?}",
-//                     mount_key_already_loaded_output
-//                 ));
-
-//                 // unload the ZFS key
-//                 zfs_encrypted_dataset
-//                     .unloadkey()
-//                     .expect("ZFS Dataset unload key failed!");
-
-//                 // release stdin back to normal
-//                 drop(stdin_guard);
-//             } // END of **Integration Test**: mount an encrypted dataset from password
-
-//             //clean up and remove the dataset folder
-//             cleanup_zpool(&zpool_name, temp_folder);
-
-//             // **Integration Test** check for graceful execution
-//             let create_output = create_password_output
-//                 .expect("ZFS Dataset create from Password Integration test failed!");
-
-//             // **Integration Test** check for graceful execution
-//             let mount_output = mount_password_output
-//                 .expect("ZFS Dataset mount from Password Integration test failed!");
-
-//             let key_already_loaded_output = mount_key_already_loaded_output
-//                 .expect_err("ZFS Dataset mount on an already loaded key Integration test failed!")
-//                 .to_string();
-
-//             // **Integration Test** verify stdout with the expected result
-//             assert_eq!(create_output, None);
-//             assert_eq!(mount_output, None);
-//             assert_eq!(
-//                 key_already_loaded_output,
-//                 format!(
-//                     "Key load error: Key already loaded for '{}'.\n",
-//                     zfs_encrypted_dataset.to_string()
-//                 )
-//             );
-//         } //END  **Integration Test**: Create from File then mount it
-
-//         // **Integration Test**: Create from File then mount it
-//         // This test will only run if there is root permission
-//         #[cfg(feature = "file")]
-//         {
-//             // This test will only run if there is root permission
-//             if !nix::unistd::Uid::effective().is_root() {
-//                 eprintln!("This test needs root permission. Terminating early!");
-//                 return;
-//             }
-
-//             let (zpool_name, temp_folder) = prepare_zpool();
-
-//             let mut zpool_with_dataset = zpool_name.to_owned();
-//             zpool_with_dataset.push('/');
-//             zpool_with_dataset.push_str(&random_string(3));
-//             let zfs_encrypted_dataset =
-//                 Dataset::new(zpool_with_dataset).expect("ZFS name problem. Test terminated early!");
-
-//             //Output of the Integration test will be stored in these variables to be validated
-//             let create_file_output;
-//             let mount_file_output;
-
-//             // **Integration Test**: create a new encrypted dataset from file
-//             {
-//                 // construct the needed Struct related to this unit test
-//                 let create_file = CliArgs {
-//                     operation: OperationMode::Manual {
-//                         operation: Operations::Create {
-//                             datasets: vec![zfs_encrypted_dataset.clone()],
-//                         },
-//                     },
-//                     second_factor: TwoFactorMode::File {
-//                         file: String::from("/dev/zero"), // Zeros
-//                         size: Some(1 << 8),
-//                         port: None,
-//                     },
-//                 };
-
-//                 // use a temp file to override stdin for password entry
-//                 let mut password_file = tempfile::NamedTempFile::new()
-//                     .expect("Couldn't make a temp file! Test terminating early!");
-
-//                 // generate the temp file and fill it with the password
-//                 // and feed "test" as password
-//                 password_file
-//                     .write_all(b"test")
-//                     .expect("Couldn't write to the temp file! Test terminating early!");
-
-//                 let password_file_path = password_file.into_temp_path();
-//                 let password_file_path = password_file_path
-//                     .to_str()
-//                     .expect("Unknown temp file path! Test terminating early!");
-
-//                 // feed password_file to stdin
-//                 let stdin_guard = stdio_override::StdinOverride::override_file(password_file_path);
-
-//                 // **Integration Test** run() function and capture its stdout output
-//                 create_file_output = run(create_file);
-
-//                 // release stdin back to normal
-//                 drop(stdin_guard);
-
-//                 //umount and unload the ZFS key
-//                 zfs_encrypted_dataset
-//                     .umount()
-//                     .expect("ZFS Dataset create from file Integration test failed!")
-//                     .unloadkey()
-//                     .expect("ZFS Dataset create from file Integration test failed!");
-//             } // END of **Integration Test 1**: create a new encrypted dataset from file
-
-//             // **Integration Test**: mount an encrypted dataset from file
-//             {
-//                 // construct the needed Struct related to this unit test
-//                 let mount_file = CliArgs {
-//                     operation: OperationMode::Manual {
-//                         operation: Operations::Mount {
-//                             datasets: vec![zfs_encrypted_dataset.clone()],
-//                             recursive: false,
-//                         },
-//                     },
-//                     second_factor: TwoFactorMode::File {
-//                         file: String::from("/dev/zero"), // Zeros
-//                         size: Some(1 << 8),
-//                         port: None,
-//                     },
-//                 };
-
-//                 // use a temp file to override stdin for password entry
-//                 let mut password_file = tempfile::NamedTempFile::new()
-//                     .expect("Couldn't make a temp file! Test terminating early!");
-
-//                 // generate the temp file and fill it with the password
-//                 // and feed "test" as password
-//                 password_file
-//                     .write_all(b"test")
-//                     .expect("Couldn't write to the temp file! Test terminating early!");
-
-//                 let password_file_path = password_file.into_temp_path();
-//                 let password_file_path = password_file_path
-//                     .to_str()
-//                     .expect("Unknown temp file path! Test terminating early!");
-
-//                 // feed password_file to stdin
-//                 let stdin_guard = stdio_override::StdinOverride::override_file(password_file_path);
-
-//                 // **Integration Test** run() function and capture its stdout output
-//                 mount_file_output = run(mount_file);
-
-//                 // release stdin back to normal
-//                 drop(stdin_guard);
-
-//                 //umount and unload the ZFS key
-//                 zfs_encrypted_dataset
-//                     .umount()
-//                     .expect("ZFS Dataset create from file Integration test failed!")
-//                     .unloadkey()
-//                     .expect("ZFS Dataset create from file Integration test failed!");
-//             } // END of **Integration Test**: mount an encrypted dataset from file
-
-//             //clean up and remove the dataset folder
-//             cleanup_zpool(&zpool_name, temp_folder);
-
-//             // **Integration Test** check for graceful execution
-//             let create_output =
-//                 create_file_output.expect("ZFS Dataset create from file Integration test failed!");
-
-//             // **Integration Test** check for graceful execution
-//             let mount_output =
-//                 mount_file_output.expect("ZFS Dataset mount from file Integration test failed!");
-
-//             // **Integration Test** verify stdout with the expected result
-//             assert_eq!(create_output, None);
-//             assert_eq!(mount_output, None);
-//         } //END  **Integration Test**: Create from File then mount it
-
-//         // TODO: Integration test for Yubikey modes are not implemented.
-//     } // END all Integration Tests
-
-//     /**********************************************************************
-//      *  In this this section the supporting functions that are needed for *
-//      *  Integration and unit tests are implemented.                       *
-//      *********************************************************************/
-//     fn random_string(length: u8) -> String {
-//         use random_string::generate;
-
-//         // for maximum compatibility limit the random character to ASCII alphabets
-//         const CHARSET: &str = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ";
-//         generate(length as usize, CHARSET)
-//     }
-
-//     // this function generates a temp folder and a zpool with a random name.
-//     fn prepare_zpool() -> (String, std::path::PathBuf) {
-//         // For ZFS related unit tests need root permission
-//         // Check for root permission and exit early
-//         if !nix::unistd::Uid::effective().is_root() {
-//             panic!("Root permission is needed for integration tests! Tests terminated early!");
-//         }
-
-//         // Check for ZFS tools and exit early
-//         std::process::Command::new("zpool")
-//             .arg("version")
-//             .spawn()
-//             .expect("ZFS and ZPOOL tools must be installed. Test terminated early!");
-
-//         // make a temp folder in the system temp directory
-//         // this temp folder will be automatically deleted at the end of unit test
-//         let temp_folder = tempfile::tempdir()
-//             .expect("Couldn't make a temp folder! Test terminated early!")
-//             .into_path();
-
-//         // Use a random name to avoid modifying an existing ZFS pool and dataset
-//         let zpool_name = random_string(30);
-
-//         // Use a random mount point for Zpool alt_root
-//         let mut zpool_alt_root = temp_folder.clone();
-//         zpool_alt_root.push(random_string(5));
-
-//         let mut zpool_path = temp_folder.clone();
-//         zpool_path.push(zpool_name.clone());
-
-//         // Generate a 512MB file which will be used as ZFS pool vdev
-//         std::process::Command::new("truncate")
-//             .arg("--size")
-//             .arg("512M")
-//             .arg(&zpool_path)
-//             .spawn()
-//             .expect("Cannot generate a temp file. Test terminated early!");
-
-//         // create a new temporarily zpool using vdev
-//         let command_output = std::process::Command::new("zpool")
-//             .arg("create")
-//             .arg(&zpool_name)
-//             .arg(&zpool_path)
-//             .arg("-R")
-//             .arg(zpool_alt_root)
-//             .status()
-//             .expect("Zpool creation failed! Test terminated early!");
-
-//         if !command_output.success() {
-//             panic!("Zpool creation failed! Test terminated early!");
-//         }
-
-//         (zpool_name, temp_folder)
-//     }
-
-//     // this function removes zpool and cleans up the temp folder.
-//     fn cleanup_zpool(zpool_name: &str, temp_folder: std::path::PathBuf) {
-//         let command_output = std::process::Command::new("zpool")
-//             .arg("export")
-//             .arg(zpool_name)
-//             .status()
-//             .expect("Failed to export Zpool!");
-//         if !command_output.success() {
-//             panic!("Failed to export Zpool!");
-//         }
-//         std::process::Command::new("rm")
-//             .arg("-rf")
-//             .arg(temp_folder)
-//             .spawn()
-//             .expect("Temp folder clean up failed!");
-//     }
-// }

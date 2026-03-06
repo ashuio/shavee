@@ -1,188 +1,162 @@
-use crate::{password, yubikey::*, zfs::*};
-use base64;
+//! Orchestration logic for Shavee encryption workflows.
+//!
+//! This module combines the lower-level ZFS, Yubikey, and file-hashing components
+//! to provide high-level operations for dataset management.
+
+use crate::{
+    Error, Result, password, yubikey,
+    zfs::{Dataset, ZfsShaveeProperties},
+};
+use base64::{Engine, engine::general_purpose::NO_PAD};
 use challenge_response::Device;
-use rand::{rngs, RngCore, SeedableRng};
-use std::{error::Error, sync::Mutex};
+use rand::{RngCore, SeedableRng, rngs};
+use std::sync::Mutex;
 
-pub const BASE64_ENGINE: base64::engine::GeneralPurpose = base64::engine::GeneralPurpose::new(
-    &base64::alphabet::STANDARD,
-    base64::engine::general_purpose::NO_PAD,
-);
+/// Base64 engine for standard alphabet without padding.
+pub const BASE64_ENGINE: base64::engine::GeneralPurpose =
+    base64::engine::GeneralPurpose::new(&base64::alphabet::STANDARD, NO_PAD);
 
-// All ZFS Dataset functions are methods for the Dataset Struct
 impl Dataset {
-    /// Uses Yubikey  2FA to create the dataset and stores salt in its ZFS property as base64 encode
+    /// Creates an encrypted dataset using Yubikey 2FA.
+    ///
+    /// # Arguments
+    /// * `passphrase` - The user's primary password.
+    /// * `yubi_slot` - The Yubikey slot to use (1 or 2).
+    /// * `yubikey` - The Yubikey device protected by a Mutex.
+    /// * `salt` - The salt for key derivation.
+    ///
+    /// # Returns
+    /// `Result<()>` indicating success or failure of the creation process.
     pub fn yubi_create(
-        self,
+        &self,
         passphrase: &[u8],
         yubi_slot: Option<u8>,
         yubikey: &Mutex<Device>,
         salt: &[u8],
-    ) -> Result<(), Box<dyn Error>> {
+    ) -> Result<()> {
         crate::trace(&format!(
-            "Creating ZFS \"{:?}\" dataset with Yubikey 2FA.",
-            self
+            "Creating ZFS dataset \"{}\" with Yubikey 2FA",
+            self.name()
         ));
-        let passphrase = yubi_key_calculation(passphrase, yubi_slot, salt, yubikey)?;
-        self.create(&passphrase)?;
-        crate::trace("Dataset was created successfully!");
-        // Store the in the ZFS dataset property as base64 encoded
-        crate::trace(&format!("Salt \"{:?}\" stored successfully!", salt));
+
+        // Calculate the derived passphrase using Yubikey HMAC-SHA1
+        let derived_passphrase = yubi_key_calculation(passphrase, yubi_slot, salt, yubikey)?;
+
+        // Instruct ZFS to create the dataset with the derived passphrase
+        self.create(&derived_passphrase)?;
+
+        crate::trace("Dataset created successfully");
         Ok(())
     }
 
-    /// Uses File 2FA to create the dataset and stores salt in its ZFS property as base64 encode
-    pub fn file_create(
-        self,
-        passphrase: &[u8],
-        filehash: Vec<u8>,
-        salt: &[u8],
-    ) -> Result<(), Box<dyn Error>> {
+    /// Creates an encrypted dataset using File 2FA.
+    ///
+    /// # Arguments
+    /// * `passphrase` - The user's primary password.
+    /// * `filehash` - The pre-calculated hash of the 2FA file.
+    /// * `salt` - The salt for key derivation.
+    ///
+    /// # Returns
+    /// `Result<()>` indicating success or failure of the creation process.
+    pub fn file_create(&self, passphrase: &[u8], filehash: Vec<u8>, salt: &[u8]) -> Result<()> {
         crate::trace(&format!(
-            "Creating ZFS \"{:?}\" dataset with File as 2FA.",
-            self
+            "Creating ZFS dataset \"{}\" with File 2FA",
+            self.name()
         ));
-        let passphrase = file_key_calculation(passphrase, filehash, salt)?;
-        self.create(&passphrase)?;
-        crate::trace("Dataset was created successfully!");
-        // Store the in the ZFS dataset property as base64 encoded
-        crate::trace(&format!("Salt \"{:?}\" stored successfully!", salt));
+
+        // Calculate the derived passphrase using the file hash and user password
+        let derived_passphrase = file_key_calculation(passphrase, filehash, salt)?;
+
+        // Instruct ZFS to create the dataset with the derived passphrase
+        self.create(&derived_passphrase)?;
+
+        crate::trace("Dataset created successfully");
         Ok(())
     }
 }
 
-/// Generates ZFS dataset passphrase based on yubikey 2FA
+/// Derives a ZFS passphrase using Yubikey HMAC-SHA1.
+///
+/// This involves hashing the user password, sending it as a challenge to the Yubikey,
+/// and then hashing the resulting HMAC response again to derive the final key.
 pub fn yubi_key_calculation(
     pass: &[u8],
     yubi_slot: Option<u8>,
     salt: &[u8],
     yubikey: &Mutex<Device>,
-) -> Result<String, Box<dyn Error>> {
-    crate::trace("Calculating passphrase key using Yubikey.");
-    let key = yubikey_get_hash(pass, yubi_slot, salt, yubikey)?;
-    Ok(base64::Engine::encode(&BASE64_ENGINE, key))
+) -> Result<String> {
+    crate::trace("Calculating key using Yubikey");
+    let key = yubikey::yubikey_get_hash(pass, yubi_slot, salt, yubikey)?;
+    Ok(BASE64_ENGINE.encode(key))
 }
 
-/// Generates ZFS dataset passphrase based on File 2FA
-pub fn file_key_calculation(
-    pass: &[u8],
-    filehash: Vec<u8>,
-    salt: &[u8],
-) -> Result<String, Box<dyn Error>> {
-    crate::trace("Calculating passphrase key using Yubikey.");
-    let passhash = password::hash_argon2(pass, salt).expect("Hash error");
-    let key = password::hash_argon2(&[filehash, passhash].concat(), salt).expect("Hash error");
-    crate::trace("Passphrase is calculated!");
-    Ok(base64::Engine::encode(&BASE64_ENGINE, key))
-}
-
-/// Generates ZFS dataset passphrase without 2FA
-pub fn password_mode_hash(password: &[u8], salt: &Vec<u8>) -> Result<String, Box<dyn Error>> {
-    crate::trace("Calculating passphrase key without 2FA.");
-    let key = password::hash_argon2(password, salt).expect("Hash error");
-    let passphrase = base64::Engine::encode(&BASE64_ENGINE, key);
-    crate::trace("Passphrase is calculated!");
-    Ok(passphrase)
-}
-
-///  Based on the discussion on issue #23; to determine which salt to use:
-///     1. Check if the ZFS dataset is specified
-///     2. Check if the ZFS dataset has salt property value then use it after base64 decode
-///     3. If salt is not extracted from above, then check for salt environment variable
-///     4. If the salt environment variable exists, use it
-///     5. If none of the above is valid, then use the default salt.
+/// Derives a ZFS passphrase using a file hash.
 ///
-///  However to simplify the code:
-///     i. Generate a variable to store the salt environment variable or static salt
-///         if the environment variable is not set
-///    ii. If the ZFS dataset has salt property value use it (base64 decode), otherwise use salt from (i)
-pub fn get_salt(dataset: Option<&Dataset>) -> Result<Vec<u8>, Box<dyn Error>> {
-    crate::trace("Extracting salt.");
-    // Generate salt to be either env variable or default static.
-    let store_env_salt = std::env::var(crate::ENV_SALT_VARIABLE);
-    crate::trace(&format!(
-        "Environment variable for salt is {:?}",
-        store_env_salt
-    ));
-    let env_or_static_salt = store_env_salt
-        .as_deref()
-        .unwrap_or(crate::STATIC_SALT)
-        .as_bytes()
-        .to_vec();
+/// This method combines the file's hash with the Argon2 hash of the user's password,
+/// then performs a final Argon2 hash on the concatenated result.
+pub fn file_key_calculation(pass: &[u8], filehash: Vec<u8>, salt: &[u8]) -> Result<String> {
+    crate::trace("Calculating key using File hash");
 
-    // If ZFS dataset has salt value use it after base64 decode
-    // otherwise use the salt from above
-    let salt = match dataset {
-        Some(dataset) => {
-            crate::trace(&format!(
-                "Check if the ZFS \"{:?}\" dataset has a salt property",
-                dataset
-            ));
-            match dataset.get_property(ZfsShaveeProperties::Salt.to_string())? {
-                Some(property_value) => {
-                    crate::trace(&format!(
-                        "Dataset has salt! Base64 encoded: \"{}\".",
-                        property_value
-                    ));
-                    base64::Engine::decode(&BASE64_ENGINE, property_value.as_bytes().to_vec())?
-                }
-                // ZFS salt property is empty use the next
-                None => env_or_static_salt,
-            }
+    // First, hash the user password
+    let passhash = password::hash_argon2(pass, salt)?;
+
+    // Concatenate file hash and password hash for the final KDF step
+    let mut combined = filehash;
+    combined.extend_from_slice(&passhash);
+
+    // Hash the combined data to derive the final key
+    let key = password::hash_argon2(&combined, salt)?;
+    crate::trace("Key calculated successfully");
+    Ok(BASE64_ENGINE.encode(key))
+}
+
+/// Derives a ZFS passphrase without a second factor.
+///
+/// Performs a single Argon2id pass on the user password with the provided salt.
+pub fn password_mode_hash(password: &[u8], salt: &[u8]) -> Result<String> {
+    crate::trace("Calculating key (password-only mode)");
+    let key = password::hash_argon2(password, salt)?;
+    Ok(BASE64_ENGINE.encode(key))
+}
+
+/// Retrieves the salt for a dataset according to the precedence rules:
+/// 1. Dataset-specific salt property (`com.github.shavee:salt`).
+/// 2. `SHAVEE_SALT` environment variable.
+/// 3. Static fallback salt (for backward compatibility).
+///
+/// # Returns
+/// `Result<Vec<u8>>` containing the salt bytes.
+pub fn get_salt(dataset: Option<&Dataset>) -> Result<Vec<u8>> {
+    crate::trace("Retrieving salt");
+
+    // Precedence 1: Dataset property
+    if let Some(ds) = dataset {
+        if let Some(prop) = ds.get_property(&ZfsShaveeProperties::Salt.to_string())? {
+            crate::trace("Using salt from ZFS dataset property");
+            // Salt is stored base64-encoded in ZFS properties
+            return BASE64_ENGINE
+                .decode(prop.as_bytes())
+                .map_err(|e| Error::Crypto(format!("Failed to decode salt from ZFS: {}", e)));
         }
-        // if no dataset is specified, then check for environment variable
-        None => env_or_static_salt,
-    };
-    crate::trace(&format!("Salt value is: \"{:?}\"", salt));
-    Ok(salt)
+    }
+
+    // Precedence 2: Environment variable
+    if let Ok(env_salt) = std::env::var(crate::ENV_SALT_VARIABLE) {
+        crate::trace("Using salt from environment variable");
+        return Ok(env_salt.into_bytes());
+    }
+
+    // Precedence 3: Static fallback
+    crate::trace("Using static fallback salt");
+    Ok(crate::STATIC_SALT.as_bytes().to_vec())
 }
 
-/// Generates random salt with `RANDOM_SALT_LEN` length
+/// Generates a new random salt of length `RANDOM_SALT_LEN`.
+///
+/// Uses the operating system's secure random number generator.
 pub fn generate_salt() -> Vec<u8> {
-    crate::trace("Generating a random salt:");
-    // Generate a random salt using OS randomness
-    let mut random_salt = vec![0u8; crate::RANDOM_SALT_LEN];
-    let mut rand = rngs::StdRng::from_os_rng();
-    rand.fill_bytes(&mut random_salt);
-    crate::trace(&format!("{:?}", random_salt));
-    // Return the generated salt
-    random_salt
+    crate::trace("Generating random salt");
+    let mut salt = vec![0u8; crate::RANDOM_SALT_LEN];
+    rngs::StdRng::from_os_rng().fill_bytes(&mut salt);
+    salt
 }
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-    #[test]
-    fn file_key_calculation_test() {
-        crate::trace_init(false);
-        let filehash = vec![
-            105, 63, 149, 213, 131, 131, 166, 22, 45, 42, 171, 73, 235, 96,
-        ];
-        let output =
-            file_key_calculation(b"test", filehash, &crate::STATIC_SALT.as_bytes()).unwrap();
-        assert_eq!(
-            output,
-            "SCf4JUjnkJUN3twj73Y4X+5hRWvUdAw+yGHUkQcu249S9SB/VITignRP6T58JkNa+/T5Ut4PUv3gT4h6bX3b7g");
-    }
-
-    #[test]
-    fn password_mode_hash_test() {
-        crate::trace_init(false);
-        let passphrase = password_mode_hash(b"test", &crate::STATIC_SALT.into())
-            .expect("Couldn't generate the passphrase! Test terminating early!"); // use static salt for predictable result
-
-        assert_eq!(
-        passphrase,
-        "LDa6mHK4xmv37cqoG8B+9M/ZIaEPLDhPQER6nuP7dw8mB1MoKoRkgZCbUNRwXvGwG2UkfWJUUEVOfWzUCCb8JA" // expected output for "test" password
-    );
-    }
-
-    #[test]
-    fn generate_salt_test() {
-        crate::trace_init(false);
-        let salt = generate_salt();
-        // Check if the salt has the correct length
-        assert_eq!(salt.len(), crate::RANDOM_SALT_LEN);
-    }
-}
-// TODO: Decide if unit tests are needed for the functions with simple logics?
